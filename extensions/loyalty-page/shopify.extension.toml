@@ -1,0 +1,9 @@
+api_version = "2024-01"
+
+[[extensions]]
+type = "theme"
+name = "loyalty-page"
+
+[extensions.settings]
+[[extensions.settings.sections]]
+name = "loyalty-program"

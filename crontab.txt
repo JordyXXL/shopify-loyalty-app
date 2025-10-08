@@ -1,0 +1,24 @@
+# Shopify Loyalty App Cron Jobs
+# Install with: crontab crontab.txt
+# View with: crontab -l
+
+# Process loyalty queues every 5 minutes
+*/5 * * * * curl -H "Authorization: Bearer YOUR_CRON_SECRET" -X POST https://your-domain.com/api/cron/process-queues >> /var/log/loyalty-cron.log 2>&1
+
+# Health check every hour
+0 * * * * curl -f https://your-domain.com/api/cron/process-queues || echo "$(date): Health check failed" >> /var/log/loyalty-health.log
+
+# Clean up old logs weekly (Sunday at 2 AM)
+0 2 * * 0 find /home/$USER/shopify-loyalty-app/logs -name "*.log" -mtime +30 -delete
+
+# Database backup daily at 3 AM
+0 3 * * * pg_dump -h localhost -U loyalty_user loyalty_app_prod | gzip > /home/$USER/backups/loyalty_app_$(date +\%Y\%m\%d).sql.gz
+
+# Clean up old backups (keep 30 days)
+0 4 * * * find /home/$USER/backups -name "loyalty_app_*.sql.gz" -mtime +30 -delete
+
+# Restart PM2 processes weekly (Sunday at 4 AM) to prevent memory leaks
+0 4 * * 0 pm2 restart shopify-loyalty-app
+
+# Monitor disk space and send alert if > 80%
+0 */6 * * * df -h | awk '$5 > 80 {print "$(date): Disk usage warning: " $0}' >> /var/log/disk-usage.log

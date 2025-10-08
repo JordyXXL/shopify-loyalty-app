@@ -1,0 +1,31 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "5b3914ea603a436d0706377226758e86"
+application_url = "https://plugin.loyaltyengage.tech/"
+embedded = true
+name = "Loyalty Engage Connector"
+handle = "loyalty_engage"
+
+[webhooks]
+api_version = "2025-01"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_orders,read_product_listings,read_publications,write_customers,write_discounts,write_orders,write_products"
+
+[auth]
+redirect_urls = [
+  "https://plugin.loyaltyengage.tech/auth/callback",
+  "https://plugin.loyaltyengage.tech/auth/shopify/callback",
+  "https://plugin.loyaltyengage.tech/api/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true

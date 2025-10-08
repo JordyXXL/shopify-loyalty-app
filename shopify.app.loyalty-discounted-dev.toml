@@ -1,0 +1,27 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "d5e0422b110d228860ac20dff83178be"
+application_url = "https://differ-wv-environmental-initiative.trycloudflare.com"
+embedded = true
+name = "loyalty-discounted-DEV"
+handle = "loyalty-discounted-dev"
+
+[webhooks]
+api_version = "2025-04"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_orders,read_product_listings,read_publications,write_customers,write_discounts,write_orders,write_products"
+
+[auth]
+redirect_urls = [
+  "https://differ-wv-environmental-initiative.trycloudflare.com/auth/callback",
+  "https://differ-wv-environmental-initiative.trycloudflare.com/auth/shopify/callback",
+  "https://differ-wv-environmental-initiative.trycloudflare.com/api/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true

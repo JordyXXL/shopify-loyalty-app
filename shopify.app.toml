@@ -1,0 +1,35 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "50a86561076116d26dc354aa911151e9"
+application_url = "https://prepare-mt-barbara-harm.trycloudflare.com"
+embedded = true
+name = "Loyalty Discounted Product"
+handle = "loyalty-discounted-product"
+
+[webhooks]
+api_version = "2025-01"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_orders,read_product_listings,read_publications,write_customers,write_discounts,write_orders,write_products"
+
+[auth]
+redirect_urls = [
+  "https://prepare-mt-barbara-harm.trycloudflare.com/auth/callback",
+  "https://prepare-mt-barbara-harm.trycloudflare.com/auth/shopify/callback",
+  "https://prepare-mt-barbara-harm.trycloudflare.com/api/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true

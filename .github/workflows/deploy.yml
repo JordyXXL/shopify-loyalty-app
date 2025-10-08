@@ -1,0 +1,173 @@
+name: Deploy to Digital Ocean
+
+on:
+  push:
+    branches: [ main, production ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_VERSION: '18'
+  REGISTRY: registry.digitalocean.com
+  IMAGE_NAME: shopify-loyalty-app
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+
+    - name: Run database migrations
+      run: npx prisma db push
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+    - name: Run linting
+      run: npm run lint
+
+    - name: Run type checking
+      run: npx tsc --noEmit
+
+    - name: Build application
+      run: npm run build
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+    - name: Build container image
+      run: docker build -t $REGISTRY/$IMAGE_NAME:$GITHUB_SHA .
+
+    - name: Log in to DigitalOcean Container Registry
+      run: doctl registry login --expiry-seconds 1200
+
+    - name: Push image to DigitalOcean Container Registry
+      run: docker push $REGISTRY/$IMAGE_NAME:$GITHUB_SHA
+
+    - name: Tag as latest
+      run: |
+        docker tag $REGISTRY/$IMAGE_NAME:$GITHUB_SHA $REGISTRY/$IMAGE_NAME:latest
+        docker push $REGISTRY/$IMAGE_NAME:latest
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    
+    steps:
+    - name: Deploy to staging
+      uses: digitalocean/app_action@v1.1.5
+      with:
+        app_name: shopify-loyalty-staging
+        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        images: '[{
+          "name": "shopify-loyalty-app",
+          "image": {
+            "registry_type": "DOCR",
+            "repository": "shopify-loyalty-app",
+            "tag": "${{ github.sha }}"
+          }
+        }]'
+
+    - name: Wait for deployment
+      run: sleep 60
+
+    - name: Health check
+      run: |
+        curl -f https://shopify-loyalty-staging.ondigitalocean.app/health || exit 1
+
+  deploy-production:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/production'
+    environment: production
+    
+    steps:
+    - name: Deploy to production
+      uses: digitalocean/app_action@v1.1.5
+      with:
+        app_name: shopify-loyalty-production
+        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        images: '[{
+          "name": "shopify-loyalty-app",
+          "image": {
+            "registry_type": "DOCR",
+            "repository": "shopify-loyalty-app",
+            "tag": "${{ github.sha }}"
+          }
+        }]'
+
+    - name: Wait for deployment
+      run: sleep 90
+
+    - name: Health check
+      run: |
+        curl -f https://your-domain.com/health || exit 1
+
+    - name: Notify deployment success
+      if: success()
+      run: |
+        echo "🚀 Production deployment successful!"
+        echo "App URL: https://your-domain.com"
+
+  security-scan:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'

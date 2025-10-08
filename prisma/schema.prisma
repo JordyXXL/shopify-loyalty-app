@@ -1,0 +1,169 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+model loyalty {
+  id                  Int     @id @default(autoincrement())
+  shop                String  @unique
+  loyaltyEngageID     String?
+  loyaltyEngageSecret String?
+  E_Mail_Address      String?
+  loyalty_Password    String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// Multi-tenant configuration table
+model Tenant {
+  id                  Int      @id @default(autoincrement())
+  name                String   @unique
+  shopDomain          String
+  accessToken         String
+  loyaltyLogin        String?
+  loyaltyToken        String?
+  basicAuthUser       String?
+  basicAuthPass       String?
+  allowedIps          String?  // JSON array of allowed IPs
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  profileQueue        ProfileQueue[]
+  purchaseQueue       PurchaseQueue[]
+  loyaltyPages        LoyaltyPage[]
+  
+  @@index([shopDomain])
+}
+
+// Profile synchronization queue
+model ProfileQueue {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  profile     String   @db.LongText // JSON profile data
+  status      ProfileQueueStatus @default(PENDING)
+  retryCount  Int      @default(0)
+  lastError   String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([status, createdAt])
+  @@index([tenantId])
+}
+
+enum ProfileQueueStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+// Purchase event queue
+model PurchaseQueue {
+  id              Int      @id @default(autoincrement())
+  tenantId        Int
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shopifyOrderId  String
+  payload         String   @db.LongText // JSON order data
+  status          PurchaseQueueStatus @default(PENDING)
+  retryCount      Int      @default(0)
+  lastError       String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([shopifyOrderId, tenantId])
+  @@index([status, createdAt])
+  @@index([tenantId])
+}
+
+enum PurchaseQueueStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+// Loyalty page management
+model LoyaltyPage {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  themeId     String
+  templateKey String   // e.g., 'loyalty-page'
+  isActive    Boolean  @default(true)
+  settings    String?  @db.LongText // JSON settings for the page
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([tenantId, themeId])
+  @@index([tenantId])
+}
+
+// Free items tracking (from WordPress plugin)
+model FreeItem {
+  id          Int      @id @default(autoincrement())
+  shop        String
+  email       String
+  sku         String
+  quantity    Int      @default(1)
+  status      FreeItemStatus @default(PENDING)
+  orderNumber String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([shop, email])
+  @@index([status])
+}
+
+enum FreeItemStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+// API request logs for debugging
+model ApiLog {
+  id          Int      @id @default(autoincrement())
+  shop        String?
+  endpoint    String
+  method      String
+  requestBody String?  @db.LongText
+  response    String?  @db.LongText
+  statusCode  Int?
+  duration    Int?     // milliseconds
+  error       String?  @db.Text
+  createdAt   DateTime @default(now())
+  
+  @@index([shop, createdAt])
+  @@index([endpoint, createdAt])
+}

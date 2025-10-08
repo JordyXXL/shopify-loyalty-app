@@ -1,0 +1,452 @@
+{% comment %}
+  <div id="loyalty-popup-container" style="position: relative;">
+    <button
+      id="loyalty-button"
+      class="btn btn--secondary"
+      style=""
+    >
+      {{ block.settings.button_label }}
+    </button>
+
+    <!-- Modal -->
+    <div id="loyalty-modal" class="loyalty-modal" style="display: none;">
+      <div class="loyalty-main">
+        <div class="loyalty-modal-content">
+          <span class="loyalty-close">&times;</span>
+          <h3>Check Your Loyalty Points</h3>
+
+          {% if customer %}
+            <p>Welcome, {{ customer.first_name }}!</p>
+          {% else %}
+            <form id="loyalty-form">
+              <input type="email" id="loyalty-email" placeholder="Enter your email" required>
+              <button type="submit">Check Points</button>
+            </form>
+          {% endif %}
+
+          <div id="loyalty-result" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endcomment %}
+{% if template.name == 'product' %}
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const mainContent = document.getElementById("MainContent");
+      const firstChild = mainContent?.children[0];
+      const API_DOMAIN = 'https://plugin.loyaltyengage.tech';
+      {% comment %} const API_DOMAIN = 'https://singing-toxic-belt-examine.trycloudflare.com'; {% endcomment %}
+      const shop = Shopify.shop;
+
+      const variantId = {{ product.variants[0].id | json }};
+      const productTitle = {{ product.title | json }};
+      const isLoyaltyProduct = ({{ product.tags | json }} || []).includes("loyalty");
+      const productSKU = {{ product.variants[0].sku | json }};
+      const guestMessage = {{ block.settings.not_logged_in_message | json }};
+      const buttonLabel = {{ block.settings.button_label | json }};
+
+      {% if customer %}
+        const User_email = {{ customer.email | json }};
+      {% else %}
+        const User_email = null;
+      {% endif %}
+
+      if (!variantId) {
+        console.warn("⚠️ No valid variant ID found. Skipping loyalty logic.");
+        return;
+      }
+
+      if (firstChild) {
+        const loyaltyHTML = `
+          <div id="loyalty-popup-container" class="main-loyalty-section">
+            <button id="loyalty-button" class="btn btn--secondary">
+              ${buttonLabel}
+            </button>
+            <div id="loyalty-modal" class="loyalty-modal" style="display: none;">
+              <div class="loyalty-main">
+                <div class="loyalty-modal-content">
+                  <span class="loyalty-close">&times;</span>
+                  <h3><strong>Loyalty Points</strong></h3>
+                  <p>${User_email ? `Welcome, {{ customer.first_name }}!` : `{{ block.settings.Point_model_user_Login_message }}`}</p>
+                  <div id="loyalty-result" style="margin-top: 15px;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = loyaltyHTML;
+        firstChild.prepend(wrapper);
+
+        const modal = document.getElementById('loyalty-modal');
+        const openBtn = document.getElementById('loyalty-button');
+        const closeBtn = document.querySelector('.loyalty-close');
+        const resultDiv = document.getElementById('loyalty-result');
+
+        openBtn?.addEventListener('click', () => {
+          modal.style.display = 'flex';
+          resultDiv.innerHTML = '';
+          if (User_email) fetchLoyaltyPoints(User_email);
+        });
+
+        closeBtn?.addEventListener('click', () => {
+          modal.style.display = 'none';
+        });
+
+        async function fetchLoyaltyPoints(email) {
+          try {
+            const res = await fetch(`${API_DOMAIN}/api/loyalty-products/${email}/${shop}`);
+            const data = await res.json();
+            if (data.success === true) {
+              const u = data.user_data;
+              resultDiv.innerHTML = `
+                <table border="1" cellpadding="8" cellspacing="0">
+                  <thead><tr><th>Label</th><th>Value</th></tr></thead>
+                  <tbody>
+                    <tr><td><strong>Current Points</strong></td><td>${u.currentPoints}</td></tr>
+                    <tr><td><strong>Reserved Coins</strong></td><td>${u.reservedCoins}</td></tr>
+                    <tr><td><strong>Available Coins</strong></td><td>${u.availableCoins}</td></tr>
+                    <tr><td><strong>Current Tier</strong></td><td>${u.currentTier}</td></tr>
+                    <tr><td><strong>Next Tier</strong></td><td>${u.nextTier || '—'}</td></tr>
+                    <tr><td><strong>Points Remaining for Next Tier</strong></td><td>${u.pointsRemainingToNextTier}</td></tr>
+                  </tbody>
+                </table>
+              `;
+            } else {
+              resultDiv.innerHTML = `<p>${guestMessage}</p>`;
+            }
+          } catch (err) {
+          resultDiv.innerHTML = `<p>{{block.settings.loyalty_phycecl_product }}</p>`;
+            console.error('Loyalty fetch failed:', err);
+          }
+        }
+      }
+
+      const addToCartBtn = document.querySelector("form[action='/cart/add'] button[type='submit']");
+      const buyNowBtn = document.querySelector("button[name='checkout']");
+
+      function disableButtons(message = "") {
+        if (addToCartBtn) {
+          addToCartBtn.disabled = true;
+          addToCartBtn.style.opacity = 0.5;
+        }
+        if (buyNowBtn) {
+          buyNowBtn.disabled = true;
+          buyNowBtn.style.opacity = 0.5;
+        }
+        if (message) {
+          const notice = document.createElement("div");
+          notice.innerText = message;
+          notice.style.color = "{{ block.settings.loyalty_discount_Product_color }}";
+          notice.style.fontWeight = "bold";
+          notice.style.marginTop = "10px";
+          (document.querySelector(".product-form__buttons") || document.querySelector("{{ block.settings.buy_now_button_selector }}"))?.append(notice);
+        }
+      }
+
+      fetch(`${API_DOMAIN}/api/products/${shop}`)
+        .then(res => res.json())
+        .then(productData => {
+          const matched = productData.matchedProducts.find(p =>
+            ((p?.shopify?.title || '').trim().toLowerCase() === (productTitle || '').trim().toLowerCase())
+          );
+
+          if (!matched || !matched.loyalty) return;
+
+          const productCoins = matched.loyalty.coinPrice;
+          const product_type = matched.loyalty.product_type;
+
+          if (product_type === 'discount_code') {
+            addToCartBtn?.style && (addToCartBtn.style.display = "none");
+            buyNowBtn?.style && (buyNowBtn.style.display = "none");
+            document.querySelector('[data-shopify="payment-button"]')?.style && (document.querySelector('[data-shopify="payment-button"]').style.display = "none");
+            const notice = document.createElement("div");
+            notice.innerText = "{{ block.settings.loyalty_discount_Product_message }}";
+            notice.style.color = "{{ block.settings.loyalty_discount_Product_color }}";
+            notice.style.fontWeight = "bold";
+            notice.style.marginTop = "10px";
+            (document.querySelector(".product-form__buttons") || document.querySelector("{{ block.settings.buy_now_button_selector }}"))?.appendChild(notice);
+            return;
+          }
+
+          if (!User_email && isLoyaltyProduct) {
+            disableButtons("{{ block.settings.user_login_requrid }}");
+            return;
+          }
+
+          if (User_email) {
+            fetch(`${API_DOMAIN}/api/loyalty-products/${encodeURIComponent(User_email)}/${shop}`)
+              .then(async res => {
+                if (!res.ok) throw new Error("Loyalty API failed");
+                return res.json();
+              })
+              .then(loyaltyResp => {
+                if (!loyaltyResp.success || !loyaltyResp.user_data) {
+                  disableButtons(`{{ block.settings.loyalty_phycecl_product }}`);
+                  if (!document.querySelector('.loyalty-subscribe-btn')) {
+                    const subscribeBtn = document.createElement("button");
+                    subscribeBtn.textContent = "Subscribe to Loyalty Program";
+                    subscribeBtn.className = "loyalty-subscribe-btn";
+                    subscribeBtn.addEventListener('click', () => {
+                      window.location.href = "/pages/loyalty-subscribe";
+                    });
+                    (document.querySelector(".product-form__buttons") || document.querySelector("{{ block.settings.buy_now_button_selector }}"))?.appendChild(subscribeBtn);
+                  }
+                  return;
+                }
+
+                const availableCoins = loyaltyResp.user_data.availableCoins || 0;
+                if (availableCoins < productCoins) {
+                  disableButtons(`You need ${productCoins} coins but only have ${availableCoins}.`);
+                } else {
+                  const success = document.createElement("div");
+                  success.innerText = `This item costs ${productCoins} coins. You have enough to redeem it!`;
+                  success.className = "loyalty-success-message";
+                  success.style.marginTop = "10px";
+                  (document.querySelector(".product-form__buttons") || document.querySelector("{{ block.settings.buy_now_button_selector }}"))?.appendChild(success);
+
+                  if (addToCartBtn) {
+                    const newBtn = addToCartBtn.cloneNode(true);
+                    addToCartBtn.replaceWith(newBtn);
+                    newBtn.disabled = false;
+                    newBtn.addEventListener('click', function (e) {
+                      e.preventDefault();
+                      fetch('/cart/add.js', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Accept: 'application/json',
+                        },
+                        body: JSON.stringify({
+                          id: variantId,
+                          quantity: 1,
+                          properties: {
+                            product_type: product_type || "loyalty"
+                          }
+                        }),
+                      })
+                        .then(res => res.json())
+                        .then(() => window.location.href = '/checkout')
+                        .catch(err => console.error('❌ Cart add failed:', err));
+                    });
+                  }
+                }
+              })
+              .catch(err => {
+                console.error("🔴 Loyalty API error:", err);
+             disableButtons("{{ block.settings.loyalty_phycecl_product }}");
+              });
+          }
+        });
+
+      if (!isLoyaltyProduct) {
+        fetch(`${API_DOMAIN}/api/products/${shop}`)
+          .then(res => res.json())
+          .then(data => {
+            const matched = data.matchedProducts.find(p =>
+              ((p?.shopify?.title || '').trim().toLowerCase() === productTitle.trim().toLowerCase())
+            );
+            const container = document.createElement("div");
+            container.className = "Loyaltypointcontiner";
+            container.style.marginTop = "10px";
+            container.style.padding = "12px";
+            container.innerText = "{{ block.settings.shopify_loyalty_points }}";
+
+            const buttonsSection = document.querySelector(".product-form__buttons") || document.querySelector("{{ block.settings.buy_now_button_selector }}");
+            if (buttonsSection) buttonsSection.appendChild(container);
+          })
+          .catch(err => console.error("Loyalty earn-points fetch failed:", err));
+      }
+    });
+  </script>
+
+  <style>
+    .loyalty-main{
+    width:400px;
+    }
+    .main-loyalty-section {
+      position: fixed;
+      right: 10px;
+      bottom: 200px;
+      z-index: 5;
+    }
+    .loyalty-modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    .loyalty-modal-content {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+      position: relative;
+    }
+    .loyalty-close {
+      position: absolute;
+      top: 0; right: 15px;
+      font-size: 40px;
+      cursor: pointer;
+      color: #999;
+    }
+    .btn--secondary {
+      border: none;
+      background-color: {{ block.settings.button_color }};
+      color: {{ block.settings.text_color }};
+      padding: {{ block.settings.button_padding }}px;
+      border-radius: {{ block.settings.border_radius }}px;
+      cursor: pointer;
+    }
+    .loyalty-modal-content input[type='email'],
+    .loyalty-modal-content button[type='submit'] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 4px;
+    }
+    .loyalty-subscribe-btn {
+      background-color: {{ block.settings.button_color }};
+      color: {{ block.settings.text_color }};
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 10px;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.85; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+      #okButton {
+      padding: 5px 17px;
+      background-color: blue;
+      border: none;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s ease;
+    }
+  </style>
+{% endif %}
+
+
+{% schema %}
+{
+  "name": "Loyalty Discount",
+  "target": "section",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Display Settings"
+    },
+    {
+      "type": "color",
+      "id": "button_color",
+      "label": "Button Background Color",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Button Text Color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "text",
+      "id": "button_label",
+      "label": "Button Label",
+      "default": "Check My Points"
+    },
+    {
+      "type": "color",
+      "id": "text_color_model",
+      "label": "Model Text Color",
+      "default": "#000000"
+    },
+    {
+      "type": "range",
+      "id": "button_padding",
+      "label": "Button Padding (px)",
+      "min": 5,
+      "max": 30,
+      "step": 1,
+      "default": 10
+    },
+    {
+      "type": "range",
+      "id": "border_radius",
+      "label": "Button radius (px)",
+      "min": 5,
+      "max": 15,
+      "step": 1,
+      "default": 10
+    },
+    {
+      "type": "text",
+      "id": "not_logged_in_message",
+      "label": "Guest Message",
+      "default": "You have no points. Make your first purchase to get 10 points."
+    },
+    {
+      "type": "text",
+      "id": "Point_model_user_Login_message",
+      "label": "Login Message",
+      "default": "Please log in to see your loyalty points."
+    },
+    {
+      "type": "text",
+      "id": "shopify_loyalty_points",
+      "label": "Earn Message",
+      "default": "You purchase this product and earn 10 points."
+    },
+    {
+      "type": "text",
+      "id": "buy_now_button_selector",
+      "label": "Buy Now Button Selector",
+      "default": ".shopify-payment-button__button"
+    },
+    {
+      "type": "text",
+      "id": "loyalty_discount_Product_message",
+      "label": "Unavailable Product Message",
+      "default": "This product is not available for purchase directly."
+    },
+    {
+      "type": "text",
+      "id": "reward_user_login_message",
+      "label": "Login Required Message",
+      "default": "Please log in to view loyalty rewards."
+    },
+
+    {
+      "type": "color",
+      "id": "loyalty_discount_Product_color",
+      "label": "Unavailable Product Color",
+      "default": "#b00"
+    },
+    {
+      "type": "text",
+      "id": "loyalty_phycecl_product",
+      "label": "Subscription Required Message",
+      "default": "Please subscribe to the loyalty program first."
+    },
+    {
+      "type": "text",
+      "id": "user_login_requrid",
+      "label": "Login Required for Product",
+      "default": "Login required to redeem this loyalty product."
+    }
+  ]
+}
+{% endschema %}
+

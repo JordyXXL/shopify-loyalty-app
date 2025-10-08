@@ -1,0 +1,1008 @@
+{% if section.settings.banner_image %}
+  <style>
+    .loyalty-banner{ --banner-h: {{ section.settings.banner_height_desktop }}px; --banner-h-m: {{ section.settings.banner_height_mobile }}px; }
+    @media (max-width: 768px){ .loyalty-banner{ --banner-h: var(--banner-h-m); } }
+    .loyalty-banner img{ width:100%; height: var(--banner-h); object-fit: {{ section.settings.banner_object_fit }}; }
+  </style>
+  <div class="loyalty-banner">
+    {% assign clean_path = section.settings.banner_image | remove_first: 'files/' %}
+    <img src="{{ clean_path | file_url }}" alt="{{ section.settings.banner_alt }}">
+    {% if section.settings.banner_heading != blank %}
+      <div class="loyalty-banner-text">
+        <h1>{{ section.settings.banner_heading }}</h1>
+        {% if section.settings.banner_subheading != blank %}
+          <p>{{ section.settings.banner_subheading }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% if customer %}
+<div class="loyalty-wrapper">
+  <div class="loyalty-header">
+    <h1>{{ section.settings.heading_text }}</h1>
+    <p>{{ section.settings.discount_subtext }}</p>
+  </div>
+
+  <div class="loyalty-main-grid">
+    <div class="loyalty-card loyalty-card--stats">
+      <h2>{{ section.settings.subheading_text }}</h2>
+      <ul>
+        <li><strong>{{ section.settings.label_tier }}:</strong> {{ customer.metafields.loyalty.le_current_tier }}</li>
+        <li><strong>{{ section.settings.label_points_to_next }} ({{ customer.metafields.loyalty.le_next_tier }}):</strong> {{ customer.metafields.loyalty.le_points_to_next_tier }}</li>
+        <li><strong>{{ section.settings.label_points_total }}:</strong> {{ customer.metafields.loyalty.le_points }}</li>
+        <li><strong>{{ section.settings.label_coins }}:</strong> {{ customer.metafields.loyalty.le_available_coins }}</li>
+        {% if customer.metafields.loyalty.le_bought_discount_code != blank %}
+          <li><strong>Kortingscode:</strong> {{ customer.metafields.loyalty.le_bought_discount_code }}</li>
+        {% endif %}
+      </ul>
+      <div class="loyalty-progress">
+        <div class="progress-bar">
+          <div class="progress-bar-fill" style="width: {{ progress }}%;"></div>
+          <div class="progress-marker" style="--progress: {{ progress }}%;">{{ current }}</div>
+          <div class="progress-next-label">Volgend level</div>
+        </div>
+        <small>Nog {{ to_next }} punten tot het volgend level</small>
+      </div>  
+    </div>
+
+    <div class="loyalty-card loyalty-card--discounts">
+      <h2>{{ section.settings.discount_heading }}</h2>
+      <div class="discount-buttons">
+        {% for block in section.blocks %}
+          {% if block.type == 'discount_button' %}
+            <button
+              class="loyalty-discount-btn"
+              data-sku="{{ block.settings.sku }}"
+              data-variant="{{ block.settings.variant_id }}"
+              data-cost="{{ block.settings.cost }}"
+            >
+              {{ block.settings.label }}
+            </button>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {% if section.blocks.size > 0 %}
+  <div class="loyalty-earn-points">
+    <h2>Verdien punten</h2>
+    <div class="earn-points-grid">
+      {% for block in section.blocks %}
+       {% if block.type == 'earn_method' %}
+  {%- assign ep_link = block.settings.link_url | default: '' -%}
+  {%- assign ep_event_enabled = block.settings.enable_event -%}
+  {%- assign ep_event_name = block.settings.event_name | strip -%}
+
+  {%- if ep_link != '' or ep_event_enabled -%}
+    {% assign ep_role = 'button' %}
+    {% assign ep_tabindex = '0' %}
+  {%- else -%}
+    {% assign ep_role = 'group' %}
+    {% assign ep_tabindex = '-1' %}
+  {%- endif -%}
+
+  <div
+    class="earn-point-item"
+    role="{{ ep_role }}"
+    tabindex="{{ ep_tabindex }}"
+    data-link="{{ ep_link }}"
+    data-event-enabled="{{ ep_event_enabled }}"
+    data-event-name="{{ ep_event_name }}"
+  >
+    {% if ep_link != '' %}
+        <a class="earn-point-link" href="{{ ep_link }}" {% if block.settings.link_new_tab or section.settings.links_new_tab %}target="_blank" rel="noopener"{% endif %}>
+    {% endif %}
+
+    <div class="earn-icon">
+      {% if block.settings.icon != blank %}
+        <img src="{{ block.settings.icon | image_url }}" alt="" loading="lazy" />
+      {% endif %}
+    </div>
+    <div class="earn-text">
+      <h3>{{ block.settings.title }}</h3>
+      <p>{{ block.settings.description }}</p>
+      {% if ep_event_enabled and ep_event_name != '' %}
+        <small class="earn-event-hint" aria-hidden="true">Klik om punten te verdienen</small>
+      {% endif %}
+    </div>
+
+    {% if ep_link != '' %}
+      </a>
+    {% endif %}
+  </div>
+{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+<div class="loyalty-shop">
+   {% if section.settings.loyalty_shop_heading != blank %}
+    <h2>{{ section.settings.loyalty_shop_heading }}</h2>
+  {% endif %}
+
+  {% assign customer_tier = customer.metafields.loyalty.le_current_tier | default: '' %}
+  {% assign customer_tier_up = customer_tier | upcase %}
+
+  <div class="loyalty-products-grid">
+    {%- assign lp_blocks = section.blocks | where: 'type', 'loyalty_product' -%}
+    {%- if lp_blocks.size == 0 -%}
+      <p style="text-align:center;color:#777;">Geen loyalty-producten geconfigureerd. Voeg blokken toe in de Theme Editor.</p>
+    {%- endif -%}
+
+    {% for block in lp_blocks %}
+      {% assign product = block.settings.product %}
+      {% if product %}
+        {% assign variant = product.selected_or_first_available_variant %}
+        {% assign coin_price = block.settings.coin_price | default: 0 %}
+        {% assign required_level = block.settings.required_level | strip | default: '' %}
+        {% assign required_level_up = required_level | upcase %}
+
+        {% assign meets_level = false %}
+        {% if required_level == '' %}
+          {% assign meets_level = true %}
+        {% elsif customer_tier_up == required_level_up %}
+          {% assign meets_level = true %}
+        {% endif %}
+
+        {% assign button_disabled = false %}
+        {% assign disable_reason = '' %}
+        {% if variant.available != true %}
+          {% assign button_disabled = true %}
+          {% assign disable_reason = 'Niet op voorraad.' %}
+        {% elsif meets_level != true %}
+          {% assign button_disabled = true %}
+          {% assign disable_reason = 'Je hebt level ' | append: required_level | append: ' nodig.' %}
+        {% endif %}
+
+        <div class="loyalty-product-card" {{ block.shopify_attributes }}>
+          <a href="{{ product.url }}">
+            {% if product.featured_image %}
+              <img src="{{ product.featured_image | img_url: '300x' }}" alt="{{ product.title | escape }}">
+            {% endif %}
+          </a>
+
+          <h3>{{ product.title }}</h3>
+
+          <p class="loyalty-tier">
+            {% if required_level != '' %}
+              Vereist level: <strong>{{ required_level }}</strong>
+              {% if customer_tier != '' %} • Jouw level: {{ customer_tier }}{% endif %}
+            {% else %}
+              Geen level vereist
+            {% endif %}
+          </p>
+
+          <p class="loyalty-coins">{{ coin_price }} {{ section.settings.label_coins | default: 'coins' }}</p>
+
+          <button
+            class="add-loyalty-product-btn"
+            {% if button_disabled %}disabled aria-disabled="true"{% endif %}
+            title="{% if button_disabled %}{{ disable_reason }}{% else %}Voeg toe aan winkelmand{% endif %}"
+            data-sku="{{ variant.sku | escape }}"
+            data-title="{{ product.title | escape }}"
+            data-product-id="{{ product.id }}"
+            data-variant="{{ variant.id }}"
+            data-cost="{{ coin_price | default: 0 }}"
+            data-price="{{ variant.price | money_without_currency }}"
+          >
+            {% if button_disabled %}
+              {{ disable_reason }}
+            {% else %}
+              Voeg toe aan winkelmand
+            {% endif %}
+          </button>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+<br>
+<br>
+{%- assign raf_blocks = section.blocks | where: 'type', 'refer_friend' -%}
+{% for block in raf_blocks %}
+  {% assign base = block.settings.base_url | strip %}
+  {% assign last = base | slice: -1, 1 %}
+  {% if last != '/' %}{% assign base = base | append: '/' %}{% endif %}
+  {% assign cid = customer.metafields.loyalty.le_contact_id | default: '' %}
+  {% assign refer_link = base | append: cid %}
+
+  <div class="loyalty-card loyalty-card--refer" {{ block.shopify_attributes }}>
+    <h2>{{ block.settings.title | default: 'Nodig een vriend(in) uit' }}</h2>
+
+    <p class="raf-intro">{{ block.settings.intro_text }}</p>
+
+    <div class="raf-share-row">
+      <input class="raf-link" type="text" readonly value="{{ refer_link }}">
+      <button type="button" class="raf-copy-btn" data-copy="{{ refer_link }}">Kopieer link</button>
+    </div>
+
+    {% assign share_text = block.settings.share_text | default: 'Check deze shop en pak je voordeel via mijn invite:' %}
+    {% assign full_share = share_text | append: ' ' | append: refer_link %}
+
+    <div class="raf-buttons">
+      <a class="raf-btn" href="mailto:?subject={{ block.settings.mail_subject | default: 'Tip: shop met voordeel' | url_encode }}&body={{ full_share | url_encode }}"
+         {% if section.settings.links_new_tab %}target="_blank" rel="noopener"{% endif %}>
+        Delen via e-mail
+      </a>
+
+      <a class="raf-btn" href="https://api.whatsapp.com/send?text={{ full_share | url_encode }}"
+         {% if section.settings.links_new_tab %}target="_blank" rel="noopener"{% endif %}>
+        Delen via WhatsApp
+      </a>
+    </div>
+
+    {% if block.settings.steps != blank %}
+      <div class="raf-steps">
+        {{ block.settings.steps }}
+      </div>
+    {% endif %}
+  </div>
+{% endfor %}
+
+{% assign faq_blocks = section.blocks | where: 'type', 'faq_item' %}
+{% if faq_blocks.size > 0 %}
+  <div class="loyalty-faq">
+    <h2>{{ section.settings.faq_heading | default: "Veelgestelde vragen" }}</h2>
+    <div class="faq-list">
+      {% for block in faq_blocks %}
+        <div class="faq-item">
+          <button class="faq-question">{{ block.settings.question }}</button>
+          <div class="faq-answer">
+            <p>{{ block.settings.answer }}</p>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+</div>
+{% endif %}
+
+{% unless customer %}
+  {% assign lo_blocks = section.blocks | where: 'type', 'logged_out' %}
+  {% if lo_blocks.size > 0 %}
+    <div class="loyalty-logged-out">
+      {% for block in lo_blocks %}
+        <div class="lo-card">
+          {% if block.settings.image != blank %}
+            <div class="lo-card-media">
+              <img src="{{ block.settings.image | image_url }}" alt="{{ block.settings.heading | escape }}" loading="lazy">
+            </div>
+          {% endif %}
+
+          {% if block.settings.heading != blank %}
+            <h2 class="lo-card-title">{{ block.settings.heading }}</h2>
+          {% endif %}
+
+          {% if block.settings.subheading != blank %}
+            <p class="lo-card-sub">{{ block.settings.subheading }}</p>
+          {% endif %}
+
+          {% if block.settings.body != blank %}
+            <div class="lo-card-body">{{ block.settings.body }}</div>
+          {% endif %}
+
+          {% if block.settings.button_label != blank %}
+            <div class="lo-card-actions">
+              <a class="lo-btn" href="{{ block.settings.button_url | default: routes.account_login_url }}">
+                {{ block.settings.button_label }}
+              </a>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endunless %}
+
+{% if customer %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('[LE] init');
+
+  // ==== Config (use enhanced API endpoints) ====
+  const API_BASE = '/api/shopify/v1';
+  const TENANT   = '{{ section.settings.tenant_name | default: "main" }}';
+
+  // ==== Utils ====
+  const toInt = (v, d = 0) => { const n = parseInt(v, 10); return Number.isNaN(n) ? d : n; };
+  const toFloatStr = (v, d = '0') => { if (v==null) return d; const n = parseFloat(String(v).replace(',', '.')); return Number.isNaN(n) ? d : String(n); };
+  const ensureVariantGID = (variantId) => { if (!variantId) return ''; const s = String(variantId).trim(); return s.startsWith('gid://shopify/ProductVariant/') ? s : `gid://shopify/ProductVariant/${s}`; };
+  const toNumericVariantId = (variantId) => !variantId ? '' : String(variantId).replace('gid://shopify/ProductVariant/', '').trim();
+  const withTimeout = (ms, fetcher) => { const ctrl = new AbortController(); const id = setTimeout(() => ctrl.abort(), ms); return fetcher(ctrl.signal).finally(() => clearTimeout(id)); };
+  const postJSON = (url, body, extraHeaders = {}, timeoutMs = 20000) =>
+    withTimeout(timeoutMs, (signal) => fetch(url, { method:'POST', headers:{'Content-Type':'application/json', ...extraHeaders}, body: JSON.stringify(body), signal }));
+  const setLoading = (btn, on, txt='Bezig…') => { if (!btn) return; if (!btn._originalText) btn._originalText = btn.innerText; btn.disabled=!!on; btn.style.opacity = on?'0.7':'1'; btn.innerText = on?txt:btn._originalText; };
+
+  // ==== 1) Kortings-knoppen ====
+  document.querySelectorAll('.loyalty-discount-btn').forEach(button => {
+    console.log('[LE] bind discount', button.dataset);
+    button.addEventListener('click', async () => {
+      if (button._busy) return; button._busy = true; setLoading(button, true, 'Korting ophalen…');
+      try {
+        const coins = toInt('{{ customer.metafields.loyalty.le_available_coins | default: 0 }}', 0);
+        const cost  = toInt(button.dataset.cost, 0);
+        const sku   = (button.dataset.sku || '').trim();
+        const email = ('{{ customer.email }}' || '').trim();
+        if (!email) { alert('Log eerst in.'); return; }
+        if (!sku)   { alert('SKU ontbreekt.'); return; }
+        if (coins < cost) { alert('Niet genoeg {{ section.settings.label_coins }}.'); return; }
+
+        console.log('[LE] POST redeem-discount', { tenant: TENANT, email, sku });
+        const res  = await postJSON(`${API_BASE}/redeem-discount`, { tenant: TENANT, email, sku });
+        const data = await res.json();
+        console.log('[LE] redeem-discount resp', res.status, data);
+        if (res.ok && data?.success && data?.discount_code) {
+          window.location.href = `/checkout?discount=${encodeURIComponent(data.discount_code)}`;
+        } else {
+          alert(data?.error || 'Kortingsaanvraag mislukt.');
+        }
+      } catch (err) {
+        console.error('[LE] redeem-discount error', err);
+        alert('Er ging iets mis.');
+      } finally {
+        setLoading(button, false); button._busy = false;
+      }
+    });
+  });
+
+  // ==== 2) Loyalty product inwisselen ====
+  document.querySelectorAll('.add-loyalty-product-btn').forEach(button => {
+    console.log('[LE] bind product', button.dataset);
+    button.addEventListener('click', async () => {
+      if (button._busy) return; button._busy = true; setLoading(button, true, 'Product inwisselen…');
+
+      const coins = toInt('{{ customer.metafields.loyalty.le_available_coins | default: 0 }}', 0);
+      const cost  = toInt(button.dataset.cost, 0);
+      const rawVariantId = (button.dataset.variant || '').trim();
+      const variantIdNumeric = toNumericVariantId(rawVariantId);
+      const variantIdGID     = ensureVariantGID(rawVariantId);
+      const email = ('{{ customer.email }}' || '').trim();
+      const price = toFloatStr(button.dataset.price, '0');
+
+      try {
+        if (!email) { alert('Log eerst in.'); return; }
+        if (!rawVariantId || !variantIdNumeric) { alert('Productgegevens ontbreken.'); return; }
+        if (coins < cost) { alert('Niet genoeg {{ section.settings.label_coins }}.'); return; }
+        if (price === '0') { alert('Prijs onbekend.'); return; }
+
+        console.log('[LE] POST redeem-product', { tenant: TENANT, email, sku: rawVariantId, variantId: variantIdGID, cost, price });
+        const redeemRes  = await postJSON(`${API_BASE}/redeem-product`, { tenant: TENANT, email, sku: rawVariantId, variantId: variantIdGID, cost, price });
+        const redeemData = await redeemRes.json();
+        console.log('[LE] redeem-product resp', redeemRes.status, redeemData);
+        if (!redeemRes.ok || !redeemData?.success) { alert(redeemData?.error || 'Inwisselen mislukt.'); return; }
+
+        const addRes = await postJSON('/cart/add.js', { id: variantIdNumeric, quantity: 1 });
+        if (!addRes.ok) { console.error('[LE] cart add error', await addRes.text()); alert('Kon product niet toevoegen.'); return; }
+
+        if (redeemData.discount_code) {
+          window.location.href = `/discount/${encodeURIComponent(redeemData.discount_code)}?redirect=/cart`;
+        } else {
+          window.location.href = '/cart';
+        }
+      } catch (err) {
+        console.error('[LE] redeem-product error', err);
+        alert('Er is een fout opgetreden.');
+      } finally {
+        setLoading(button, false); button._busy = false;
+      }
+    });
+  });
+
+  // ==== 3) Earn-points events + optionele link ====
+  const customerEmail = ('{{ customer.email }}' || '').trim();
+  const navigate = (url, newTab) => { if (!url) return; newTab ? window.open(url, '_blank', 'noopener') : (window.location.href = url); };
+
+  document.querySelectorAll('.earn-point-item').forEach(item => {
+    const link = (item.dataset.link || '').trim();
+    const eventEnabled = String(item.dataset.eventEnabled || '').toLowerCase() === 'true';
+    const eventName = (item.dataset.eventName || '').trim();
+    const linkEl = item.querySelector('a.earn-point-link');
+    const openInNewTab = {{ section.settings.links_new_tab | json }} || !!(linkEl && linkEl.getAttribute('target') === '_blank');
+
+    console.log('[LE] bind earn', { link, eventEnabled, eventName });
+
+    const handler = async (ev) => {
+      console.log('[LE] earn click', { link, eventEnabled, eventName });
+      if (!eventEnabled || !eventName) return;
+      if (link) ev.preventDefault();
+      try {
+        if (!customerEmail) { navigate(link, openInNewTab); return; }
+        const body = { tenant: TENANT, email: customerEmail, event: eventName };
+        const res  = await postJSON(`${API_BASE}/push-event`, body);
+        console.log('[LE] push-event status', res.status);
+      } catch (e) {
+        console.warn('[LE] push-event failed', e);
+      } finally {
+        navigate(link, openInNewTab);
+      }
+    };
+
+    item.addEventListener('click', handler);
+    item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') handler(e); });
+    if (linkEl) linkEl.addEventListener('click', handler);
+  });
+
+  // ==== 4) Refer-a-friend copy ====
+  document.querySelectorAll('.raf-copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        const link = btn.getAttribute('data-copy') || '';
+        if (!link) return;
+        await navigator.clipboard.writeText(link);
+        const old = btn.innerText;
+        btn.innerText = 'Gekopieerd!';
+        setTimeout(() => { btn.innerText = old; }, 1600);
+      } catch(e) {
+        // fallback
+        const input = btn.closest('.raf-share-row')?.querySelector('.raf-link');
+        if (input) { input.select(); document.execCommand('copy'); }
+      }
+    });
+  });
+});
+</script>
+{% endif %}
+
+<script>
+document.querySelectorAll('.faq-question').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const item = btn.parentElement;
+    item.classList.toggle('active');
+  });
+});
+</script>
+
+<style>
+.loyalty-wrapper {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  font-family: sans-serif;
+}
+.loyalty-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+.loyalty-header h1 {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+.loyalty-main-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  margin-bottom: 60px;
+}
+.loyalty-card {
+  flex: 1 1 300px;
+  background: #f9f9f9;
+  border-radius: 10px;
+  padding: 20px;
+  border: 1px solid #ddd;
+}
+.loyalty-card h2 {
+  font-size: 20px;
+  margin-bottom: 1rem;
+}
+.loyalty-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+.loyalty-card ul li {
+  margin-bottom: 0.5rem;
+}
+/* === Loyalty progressbar in oranje === */
+.loyalty-progress {
+  margin: 30px 0 10px;
+  position: relative;
+  text-align: center;
+}
+
+.progress-bar {
+  height: 14px;
+  background: #f5f5f5;
+  border-radius: 7px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f7931e, #fbb03b);
+  border-radius: 7px 0 0 7px;
+  transition: width 0.4s ease;
+}
+
+/* Huidige punten marker */
+.progress-marker {
+  position: absolute;
+  top: -34px;
+  left: var(--progress);
+  transform: translateX(-50%);
+  background: #f7931e;
+  color: #fff;
+  font-weight: bold;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  white-space: nowrap;
+}
+
+/* Pijltje onder de marker */
+.progress-marker::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px 6px 0 6px;
+  border-style: solid;
+  border-color: #f7931e transparent transparent transparent;
+}
+
+/* Label rechts (volgend level) */
+.progress-next-label {
+  position: absolute;
+  top: -22px;
+  right: 0;
+  background: #f7931e;
+  color: #fff;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.loyalty-progress small {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #555;
+}
+
+/* === Kortingsknoppen === */
+.discount-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-top: 20px;
+}
+.loyalty-discount-btn {
+  background: #fff;
+  border: 2px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.loyalty-discount-btn:hover {
+  background: #E85443;
+  color: #fff;
+  border-color: #E85443;
+}
+
+/* === Loyalty shop === */
+.loyalty-shop {
+  margin: 40px 0;
+}
+.loyalty-shop h2 {
+  font-size: 26px;
+  margin-bottom: 30px;
+  text-align: center;
+}
+.loyalty-shop-level {
+  border-top: 2px solid #ccc;
+  padding: 20px 0;
+}
+.loyalty-shop-level h3 {
+  font-size: 20px;
+  margin-bottom: 15px;
+}
+.loyalty-products-row {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+.loyalty-products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+.loyalty-product-card {
+  border: 1px solid #e2e2e2;
+  border-radius: 8px;
+  text-align: center;
+  background: #fff;
+  padding: 10px;
+}
+.loyalty-product-card img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+.loyalty-product-card h3 {
+  font-size: 16px;
+  margin: 8px 0;
+}
+.loyalty-tier {
+  font-size: 13px;
+  color: #777;
+  margin-bottom: 4px;
+}
+.loyalty-coins {
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 6px;
+}
+.loyalty-product-card button {
+  background: #E85443;
+  border: none;
+  color: #fff;
+  padding: 10px;
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 5px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.loyalty-product-card button:hover {
+  background: #c43a2d;
+}
+.loyalty-product-card button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+.loyalty-earn-points {
+  margin: 60px 0;
+  text-align: center;
+}
+.loyalty-earn-points h2 {
+  font-size: 24px;
+  margin-bottom: 2rem;
+}
+.earn-points-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 2rem;
+}
+.earn-point-item {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 1.5rem;
+  text-align: center;
+}
+.earn-icon img {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 1rem;
+}
+.earn-text h3 {
+  font-size: 16px;
+  margin-bottom: 0.5rem;
+}
+.earn-text p {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+.loyalty-banner {
+  position: relative;
+  text-align: center;
+  margin-bottom: 40px;
+  overflow: hidden;
+}
+
+.loyalty-banner img {
+  width: 100%;
+  height: var(--banner-h);
+  object-fit: {{ section.settings.banner_object_fit }};
+  display: block;
+  border-radius: 8px;
+}
+
+.loyalty-banner-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  text-align: center;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
+  max-width: 90%;
+}
+
+.loyalty-banner-text h1 {
+  font-size: 36px;
+  margin: 0;
+}
+
+.loyalty-banner-text p {
+  font-size: 18px;
+  margin-top: 10px;
+}
+@media screen and (max-width: 768px) {
+  .loyalty-main-grid {
+    flex-direction: column;
+  }
+}
+.loyalty-faq {
+  margin-top: 60px;
+}
+.loyalty-faq h2 {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+.faq-list {
+  max-width: 800px;
+  margin: 0 auto;
+}
+.faq-item {
+  border-bottom: 1px solid #ddd;
+}
+.faq-question {
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 1rem;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.faq-answer {
+  display: none;
+  padding: 0 1rem 1rem;
+  font-size: 14px;
+  color: #555;
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+.loyalty-logged-out {
+  max-width: 1100px;
+  margin: 0 auto 60px;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+.lo-card {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 20px;
+}
+.lo-card-media img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 14px;
+}
+.lo-card-title {
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+.lo-card-sub {
+  color: #666;
+  margin: 0 0 10px;
+}
+.lo-card-body {
+  font-size: 14px;
+  color: #444;
+}
+.lo-card-actions {
+  margin-top: 14px;
+}
+.lo-btn {
+  display: inline-block;
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: #E85443;
+  color: #fff;
+  text-decoration: none;
+}
+.lo-btn:hover { background: #E85443; }
+.lo-login-note {
+  text-align: center;
+  padding: 2rem 1rem;
+}
+.earn-point-item[role="button"] { cursor: pointer; }
+.earn-point-item .earn-event-hint { display:block; margin-top:.5rem; font-size:12px; color:#888; }
+.earn-point-item .earn-point-link { color: inherit; text-decoration: none; display: block; }
+.earn-point-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+
+.loyalty-card--refer { background:#fff; border:1px solid #e2e2e2; }
+.raf-intro { margin: .25rem 0 1rem; color:#444; }
+.raf-share-row { display:flex; gap:.5rem; margin: .5rem 0 1rem; }
+.raf-link { flex:1; padding:.6rem .8rem; border:1px solid #ccc; border-radius:8px; font-size:14px; }
+.raf-copy-btn { padding:.6rem .9rem; border:0; border-radius:8px; background:#E85443; color:#fff; cursor:pointer; }
+.raf-copy-btn:hover { background:#008944; }
+.raf-buttons { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; }
+.raf-btn { display:inline-block; padding:.6rem .9rem; border-radius:8px; border:1px solid #ddd; text-decoration:none; color:white; background:#E85443; }
+.raf-btn:hover { background:#E85443; }
+.raf-steps { font-size:14px; color:#444; }
+</style>
+
+{% schema %}
+{
+  "name": "Loyalty Program",
+  "settings": [
+    {
+      "type": "image_picker",
+      "id": "banner_image",
+      "label": "Banner afbeelding"
+    },
+    {
+      "type": "text",
+      "id": "banner_alt",
+      "label": "Alternatieve tekst banner",
+      "default": "Loyaliteitspagina banner"
+    },
+    {
+      "type": "text",
+      "id": "banner_heading",
+      "label": "Banner titel",
+      "default": "Spaar punten & ontvang korting"
+    },
+    {
+      "type": "text",
+      "id": "banner_subheading",
+      "label": "Banner subtitel",
+      "default": "Je loyaliteit wordt beloond!"
+    },
+    {
+      "type": "range",
+      "id": "banner_height_desktop",
+      "label": "Banner hoogte (desktop, px)",
+      "min": 120, "max": 700, "step": 10, "default": 360
+    },
+    {
+      "type": "range",
+      "id": "banner_height_mobile",
+      "label": "Banner hoogte (mobiel, px)",
+      "min": 100, "max": 500, "step": 10, "default": 220
+    },
+    {
+      "type": "select",
+      "id": "banner_object_fit",
+      "label": "Banner beeldvulling",
+      "default": "cover",
+      "options": [
+        { "value": "cover", "label": "Cover (vullend, gecropt)" },
+        { "value": "contain", "label": "Contain (hele beeld zichtbaar)" }
+      ]
+    },
+    {
+      "type": "checkbox",
+      "id": "links_new_tab",
+      "label": "Alle links in nieuw tabblad openen",
+      "default": false
+    },
+    {
+      "type": "text",
+      "id": "tenant_name",
+      "label": "Tenant Name",
+      "default": "main",
+      "info": "The tenant name configured in your loyalty app"
+    },
+    { "type": "text", "id": "heading_text", "label": "Hoofdtitel", "default": "Welkom bij je loyaliteitspagina" },
+    { "type": "color", "id": "heading_color", "label": "Kleur hoofdtitel", "default": "#000000" },
+    { "type": "range", "id": "heading_size", "label": "Tekstgrootte hoofdtitel", "default": 26, "min": 14, "max": 50 },
+
+    { "type": "text", "id": "subheading_text", "label": "Subtitel", "default": "Jouw loyaliteitsstatus" },
+    { "type": "color", "id": "subheading_color", "label": "Kleur subtitel", "default": "#333333" },
+    { "type": "range", "id": "subheading_size", "label": "Tekstgrootte subtitel", "default": 20, "min": 12, "max": 40 },
+
+    { "type": "color", "id": "progress_color", "label": "Kleur voortgangsbalk", "default": "#4CAF50" },
+    { "type": "color", "id": "border_color", "label": "Randkleur profielblok", "default": "#CCCCCC" },
+    { "type": "color", "id": "stats_bg", "label": "Achtergrondkleur profielblok", "default": "#FFFFFF" },
+    { "type": "range", "id": "card_radius", "label": "Randradius (px)", "default": 6, "min": 0, "max": 30 },
+    { "type": "range", "id": "wrapper_padding", "label": "Pagina padding (px)", "default": 32, "min": 0, "max": 100 },
+
+    { "type": "text", "id": "label_tier", "label": "Label voor huidige tier", "default": "Huidige tier" },
+    { "type": "text", "id": "label_points_to_next", "label": "Label voor punten tot volgende tier", "default": "Punten tot volgende tier" },
+    { "type": "text", "id": "label_points_total", "label": "Label voor totaal punten", "default": "Totaal punten" },
+    { "type": "text", "id": "label_coins", "label": "Label voor coins", "default": "Coins" },
+
+    { "type": "text", "id": "discount_heading", "label": "Titel kortingssectie", "default": "Wissel coins in voor korting" },
+    { "type": "text", "id": "discount_subtext", "label": "Subtekst kortingssectie", "default": "Kies je kortingsbedrag hieronder:" },
+
+    { "type": "text", "id": "loyalty_shop_heading", "label": "Titel loyalty shop", "default": "Loyalty shop" },
+
+    { "type": "range", "id": "button_padding", "label": "Knop padding (px)", "default": 20, "min": 10, "max": 50 },
+    { "type": "range", "id": "button_font_size", "label": "Knop tekstgrootte (px)", "default": 16, "min": 10, "max": 32 },
+    { "type": "text", "id": "faq_heading", "label": "FAQ sectietitel", "default": "Veelgestelde vragen" }
+  ],
+  "blocks": [
+    {
+      "type": "discount_button",
+      "name": "Korting knop",
+      "settings": [
+        { "type": "text", "id": "label", "label": "Knoptekst", "default": "€5 korting (500 coins)" },
+        { "type": "text", "id": "sku", "label": "Loyalty SKU", "default": "DISCOUNT_SKU_5" },
+        { "type": "text", "id": "variant_id", "label": "Shopify variant ID", "default": "1234567890" },
+        { "type": "number", "id": "cost", "label": "Benodigde coins", "default": 500 },
+        { "type": "color", "id": "bg_color", "label": "Achtergrondkleur", "default": "#f4f4f4" },
+        { "type": "color", "id": "text_color", "label": "Tekstkleur", "default": "#000000" },
+        { "type": "color", "id": "border_color", "label": "Randkleur", "default": "#CCCCCC" }
+      ]
+    },
+    {
+      "type": "refer_friend",
+      "name": "Refer a friend",
+      "settings": [
+        { "type": "text", "id": "title", "label": "Titel", "default": "Nodig een vriend(in) uit" },
+        { "type": "text", "id": "base_url", "label": "Basislink (prefix)", "default": "https://jouwsite.nl/ref/" },
+        { "type": "text", "id": "intro_text", "label": "Intro tekst", "default": "Deel jouw persoonlijke invite-link en ontvang samen voordeel." },
+        { "type": "text", "id": "share_text", "label": "Deel-tekst", "default": "Gebruik mijn invite:" },
+        { "type": "text", "id": "mail_subject", "label": "E-mail onderwerp", "default": "Zo ontvang jij ook korting bij Undiemeister." },
+        { "type": "richtext", "id": "steps", "label": "Uitleg / stappen", "default": "<p><strong>Zo werkt het:</strong></p><ol><li>Kopieer je link</li><li>Deel 'm met vrienden</li><li>Zij rekenen af — jij ontvangt je reward</li></ol>" }
+      ]
+    },
+    {
+      "type": "loyalty_product",
+      "name": "Loyalty product",
+      "settings": [
+        { "type": "text", "id": "heading", "label": "Titel", "default": "Loyalty product" },
+        { "type": "product", "id": "product", "label": "Product" },
+        { "type": "number", "id": "coin_price", "label": "Coin price (benodigde coins)", "default": 0 },
+        { "type": "text", "id": "required_level", "label": "Vereist level (exact, bv. Gold)" }
+      ]
+    },
+    {
+      "type": "earn_method",
+      "name": "Puntenverdien-methode",
+      "settings": [
+        { "type": "image_picker", "id": "icon", "label": "Icoon (optioneel)" },
+        { "type": "text", "id": "title", "label": "Titel", "default": "Schrijf een review" },
+        { "type": "textarea", "id": "description", "label": "Omschrijving", "default": "Verdien 50 punten door een review te schrijven over je aankoop." },
+
+        { "type": "url", "id": "link_url", "label": "Link (optioneel)" },
+        { "type": "checkbox", "id": "link_new_tab", "label": "Open link in nieuw tabblad", "default": false },
+
+        { "type": "checkbox", "id": "enable_event", "label": "Event versturen bij klik", "default": false },
+        { "type": "text", "id": "event_name", "label": "Event naam (bijv. review_click)" }
+      ]
+    },
+    {
+      "type": "faq_item",
+      "name": "FAQ item",
+      "settings": [
+        { "type": "text", "id": "question", "label": "Vraag", "default": "Hoe spaar ik punten?" },
+        { "type": "textarea", "id": "answer", "label": "Antwoord", "default": "Je spaart punten door aankopen te doen en acties te voltooien." }
+      ]
+    },
+    {
+      "type": "logged_out",
+      "name": "Uitgelogd: contentblok",
+      "settings": [
+        { "type": "image_picker", "id": "image", "label": "Afbeelding" },
+        { "type": "text", "id": "heading", "label": "Titel", "default": "Word lid en spaar mee" },
+        { "type": "text", "id": "subheading", "label": "Subtitel", "default": "Ontvang kortingen en exclusieve rewards" },
+        { "type": "richtext", "id": "body", "label": "Tekst", "default": "<p>Maak een account aan of log in om punten te verzamelen en in te wisselen voor korting.</p>" },
+        { "type": "text", "id": "button_label", "label": "Knoptekst", "default": "Inloggen / Account aanmaken" },
+        { "type": "url", "id": "button_url", "label": "Knoplink" }
+      ]
+    }
+  ],
+  "presets": [
+    { "name": "Loyalty Program" }
+  ]
+}
+{% endschema %}

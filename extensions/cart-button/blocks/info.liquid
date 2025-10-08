@@ -1,0 +1,354 @@
+{% if template == 'page.new-loyalty_information' %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const title = (document.querySelector('.main-page-title ').style.display = 'none');
+      const shopify_rte = document.querySelector('.rte');
+      shopify_rte.innerHTML = `
+  <section class="hero">
+    <div class="hero-content">
+      <h1>An integrated loyalty page without pop-ups</h1>
+      <p>We’ll build an interactive loyalty page that embodies your brand and gives your customers a seamless, pop-up free journey.</p>
+      <div class="cta-buttons">
+        <a href="#" class="demo">Request a demo</a>
+        <a href="#" class="pricing">View pricing →</a>
+      </div>
+    </div>
+<div class= "Loyalty_Page">
+
+<img src="{{ 'Loyalty-header.png'| asset_url }}" alt="Loyalty Page Demo" class="hero-image">
+
+</div>
+
+  </section>
+
+  <section class="features">
+    <div class="feature-box">
+      <h3>No developers required</h3>
+      <p>We build your loyalty page using a standard template, with the option for customization by our team or yours.</p>
+    </div>
+    <div class="feature-box">
+      <h3>Integrated with your Shopify store</h3>
+      <p>Customers can smoothly move between your store and their loyalty account to track their points.</p>
+    </div>
+    <div class="feature-box">
+      <h3>Quick to launch</h3>
+      <p>With Shopify permissions and brand assets, we can build your loyalty page within a few days.</p>
+    </div>
+  </section>
+<section class="loyalty-features-section">
+  <div class="container">
+    <h2 class="section-title">Loyalty page features</h2>
+
+    <div class="feature-cards">
+      <div class="feature-card">
+
+        <img src="{{ 'Loyalty-page-slice-5-cropped.png'| asset_url }}" alt="Logged-out and logged-in view" />
+
+        <h3>Logged-out and logged-in view</h3>
+        <p>Your loyalty page displays a logged-out view to entice sign-ups and a logged-in state so members can interact with their loyalty account.</p>
+      </div>
+
+      <div class="feature-card">
+
+        <img src="{{ '20_point.png'| asset_url }}" alt="Check points & ways to earn" />
+
+        <h3>Check points & ways to earn</h3>
+        <p>Your customers can track their active and pending points and discover ways to earn and redeem them.</p>
+      </div>
+
+      <div class="feature-card">
+
+        <img src="{{ 'Loyalty-page-slice-2-cropped.png'| asset_url }}" alt="View product rewards" />
+
+        <h3>View product rewards</h3>
+        <p>Show your customers on their loyalty page the latest products they can spend their points on.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="loyalty-auto-update-section">
+  <div class="container auto-update-content">
+    <div class="text-content">
+      <span class="label">RESPONSIVE</span>
+      <h2>Your loyalty page auto-updates with every rule change</h2>
+      <p>With every rule you set, your loyalty page automatically updates, making it easier than ever to optimize your program and run short promotions.</p>
+      <ul>
+        <li>Introduce new ways to earn points, and watch as your customers' loyalty page instantly updates to display them.</li>
+        <li>Launch double-points promos, and your customers' loyalty page will dynamically adjust to reflect changes in earnable points.</li>
+        <li>Enhance your tiers with fresh perks, and your customers' loyalty page will automatically showcase these new benefits.</li>
+      </ul>
+    </div>
+    <div class="image-content">
+
+      <img src="{{ 'Loyalty-page-slice-3.png'| asset_url }}" alt="Loyalty page updates" />
+
+    </div>
+  </div>
+</section>
+
+<section class="loyalty-auto-update-section">
+  <div class="container auto-update-content">
+   <div class="image-content">
+      <img src="{{ 'Loyalty-page-slice-4.png'| asset_url }}" alt="Loyalty page updates" />
+    </div>
+    <div class="text-content">
+      <span class="label">THEME EDITOR</span>
+      <h2>Stay in control with the loyalty page theme editor</h2>
+      <p>Our intuitive theme editor gives you total control over your integrated loyalty page's look and feel. Stay agile by customizing each section as your brand and loyalty program evolves.</p>
+      <ul>
+        <li>Preview your loyalty page as a customer and see how it looks when they're logged in.</li>
+        <li>Reorder your loyalty page sections and update the copy.</li>
+        <li>Refresh images and brand colors.</li>
+        <li>Refresh Refine your loyalty FAQs based on customer feedback.</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+ `;
+    });
+  </script>
+  <div class="main-ret"></div>
+
+
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f6fb;
+      color: #1c1c4b;
+    }
+
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 4rem 2rem 2rem;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-weight: 700;
+      max-width: 700px;
+    }
+
+    .hero p {
+      font-size: 16px;
+      color: #4a4a68;
+      margin-top: 1rem;
+      max-width: 500px;
+    }
+
+    .hero .cta-buttons {
+      margin-top: 1.5rem;
+    }
+
+    .hero .cta-buttons a {
+      display: inline-block;
+      margin: 0 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .hero .cta-buttons .demo {
+      background-color: #3ac2ed;
+      color: white;
+    }
+
+    .hero .cta-buttons .pricing {
+      color: #3a3a7a;
+    }
+
+    .hero-image {
+      margin-top: 2rem;
+      max-width: 700px;
+      width: 100%;
+    }
+
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1.5rem;
+      margin: 4rem 1rem 2rem;
+    }
+
+    .feature-box {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      padding: 1.5rem;
+      flex: 1 1 300px;
+      max-width: 400px;
+    }
+
+    .feature-box h3 {
+      font-size: 1.7rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .feature-box p {
+      font-size: 1.3rem;
+      color: #555a7b;
+    }
+
+    .feature-box::before {
+      content: '←';
+      display: inline-block;
+      margin-bottom: 0.5rem;
+      font-size: 1.2rem;
+      color: #888;
+    }
+
+    @media (min-width: 768px) {
+      .hero {
+        flex-direction: row;
+        text-align: left;
+        justify-content: center;
+
+        align-items: center;
+        padding: 5rem 4rem;
+      }
+
+      .hero-content {
+        max-width: 50%;
+      }
+
+      .hero-image {
+        max-width: 45%;
+      }
+
+      .features {
+        margin: 3rem 4rem;
+      }
+    }
+
+    .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+.Loyalty_Page{
+max-width: 500px}
+.section-title {
+  text-align: center;
+  font-size: 2rem;
+  margin-bottom: 2rem;
+  color: #1c1c4b;
+}
+
+.feature-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.feature-card {
+  flex: 1 1 300px;
+  max-width: 340px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.feature-card img {
+  width: 100%;
+  height: auto;
+  margin-bottom: 1rem;
+}
+
+.feature-card h3 {
+  font-size: 1.2rem;
+  color: #1c1c4b;
+  margin-bottom: 0.5rem;
+}
+
+.feature-card p {
+  font-size: 0.95rem;
+  color: #555a7b;
+}
+
+.loyalty-auto-update-section {
+  background-color: #f4f3fd;
+  padding: 3rem 1rem;
+}
+
+.auto-update-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2rem;
+}
+
+.text-content {
+  flex: 1 1 400px;
+}
+
+.text-content .label {
+  display: inline-block;
+  color: #9b5de5;
+  font-weight: bold;
+  {% comment %} font-size: 0.9rem; {% endcomment %}
+  margin-bottom: 0.5rem;
+}
+
+.text-content h2 {
+  {% comment %} font-size: 1.8rem; {% endcomment %}
+  color: #1c1c4b;
+  margin-bottom: 1rem;
+}
+
+.text-content p {
+  font-size: 1.5rem;
+  color: #444;
+  margin-bottom: 1rem;
+}
+
+.text-content ul {
+  padding-left: 1rem;
+  list-style: disc;
+  color: #444;
+  font-size: 0.95rem;
+}
+
+.image-content {
+  flex: 1 1 400px;
+  text-align: center;
+}
+
+.image-content img {
+  width: 100%;
+  height: auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .auto-update-content {
+    flex-direction: column-reverse;
+  }
+}
+
+  </style>
+
+  <style>
+    .page-width {
+      margin: 0;
+      max-width: 100%;
+      padding: 20px;
+    }
+  </style>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Loyalty Information page",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

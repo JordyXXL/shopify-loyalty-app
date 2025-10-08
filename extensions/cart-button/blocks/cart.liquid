@@ -1,0 +1,231 @@
+<div class="loyalty-discount-container">
+  <!-- Discount cards will be injected here -->
+</div>
+
+<div
+  id="discountModal"
+  style="display:none; position:fixed; top:30%; left:50%; transform:translate(-50%, -30%); background:white; padding:20px; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.2); z-index:1000;"
+>
+  <h3>Discount Applied</h3>
+  <p>Your discount code:</p>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <code id="discountCode" style="font-weight:bold;"></code>
+    <button class="cart__checkout-button button" id="copyButton">Copy</button>
+  </div>
+  <br>
+  <button class="cart__checkout-button button" id="okButton">OK</button>
+</div>
+
+<script id="cart-data-json" type="application/json">
+  {{ cart.items | json }}
+</script>
+{% if template == 'cart' %}
+  <script>
+    (async function () {
+      console.log("Loyalty Discounted Product script loaded");
+      console.log("Loyalty Discounted Product script loaded");
+
+    const API_DOMAIN = 'https://plugin.loyaltyengage.tech';
+    {% comment %} const API_DOMAIN = 'https://singing-toxic-belt-examine.trycloudflare.com'; {% endcomment %}
+    const shop = Shopify.shop;
+
+
+    const customerEmail = {{ customer.email | json }};
+    if (!customerEmail) return;
+
+    try {
+      const res = await fetch(`${API_DOMAIN}/api/products/${shop}`);
+      const productData = await res.json();
+
+
+      const discountProducts = productData.matchedProducts.filter(
+        (p) => p.loyalty?.product_type === 'discount_code'
+      );
+      if (!discountProducts.length) return;
+
+
+
+      const balanceRes = await fetch(`${API_DOMAIN}/api/loyalty-products/${encodeURIComponent(customerEmail)}/${shop}`);
+      const balanceData = await balanceRes.json();
+      const availableCoins = balanceData?.user_data?.availableCoins || 0;
+
+      const redeemedSKUs = new Set();
+
+      discountProducts.forEach((p, index) => {
+        const { title, coinPrice, requiredPoints ,percentage} = p.loyalty;
+        const sku = p.shopify.sku || `product-${index}`;
+        const isEligible = availableCoins >= coinPrice;
+
+        const card = document.createElement('div');
+        card.className = 'loyalty-discount-card';
+
+        card.innerHTML = `
+          <div class="loyalty-discount-details">
+            <h4>${title}</h4>
+            <p><strong>Discount:</strong> ${percentage}%</p>
+            <p><strong>Cost:</strong> ${coinPrice} coins</p>
+            <p><strong>Your Coins:</strong> ${availableCoins}</p>
+            <button class="loyalty-purchase-btn"
+                    data-sku="${sku}"
+                    data-coin-price="${coinPrice}"
+                    ${!isEligible ? 'disabled' : ''}>
+              ${isEligible ? 'Redeem with Coins' : 'Not enough coins'}
+            </button>
+          </div>
+        `;
+   const cart__footer = document.querySelector('.cart__footer');
+      const container = document.querySelector('.loyalty-discount-container');
+        cart__footer.appendChild(container);
+        container.appendChild(card);
+
+        const btn = card.querySelector('.loyalty-purchase-btn');
+
+        if (isEligible) {
+          btn.addEventListener('click', async () => {
+            if (redeemedSKUs.has(sku)) return;
+
+            redeemedSKUs.add(sku);
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+
+            try {
+              const response = await fetch(`${API_DOMAIN}/api/discount/${sku}/${customerEmail}/${shop}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+              });
+
+              const result = await response.json();
+
+             if (result.success) {
+                const modal = document.getElementById("discountModal");
+                const codeSpan = document.getElementById("discountCode");
+                const copyBtn = document.getElementById("copyButton");
+                const okBtn = document.getElementById("okButton");
+
+                codeSpan.textContent = result.discountCode;
+                modal.style.display = "block"; // Show modal
+
+                copyBtn.onclick = () => {
+                  navigator.clipboard.writeText(result.discountCode).then(() => {
+                    copyBtn.textContent = "Copied!";
+                    setTimeout(() => (copyBtn.textContent = "Copy"), 2000);
+                  });
+                };
+
+                okBtn.onclick = () => {
+                  modal.style.display = "none"; // Hide modal
+                  location.reload(); // Reload if needed
+                };
+              } else {
+                alert(`❌ Failed: ${result.message}`);
+                btn.disabled = false;
+                btn.textContent = 'Redeem with Coins';
+                redeemedSKUs.delete(sku);
+              }
+
+            } catch (error) {
+              console.error('Redeem error:', error);
+              alert('❌ Unexpected error. Please try again.');
+              btn.disabled = false;
+              btn.textContent = 'Redeem with Coins';
+              redeemedSKUs.delete(sku);
+            }
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Error fetching loyalty products:', err);
+    }
+  })();
+  </script>
+
+  <style>
+@media screen and (min-width: 750px) {
+    .cart__footer > * {
+    width: 100% !important;
+  }
+   .cart__footer {
+        display: flex;
+        justify-content: space-between;
+        border: 0;
+        flex-direction: column ;
+    }
+    .cart__ctas {
+        display: flex;
+        gap: 1rem;
+        justify-content: end !important;
+    }
+}
+
+    .loyalty-discount-container {
+    display: flex ;
+    overflow-x: auto;
+    justify-content: start;
+    gap: 20px;
+    padding: 10px 0;
+    margin: 10px;
+    scroll-behavior: smooth;
+    }
+    #loyalty-results,
+    .redeem-box {
+      display: none;
+    }
+    .loyalty-discount-card {
+      min-width: 250px;
+      max-width: 250px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      transition: transform 0.2s;
+    }
+
+    .loyalty-discount-card:hover {
+      transform: translateY(-3px);
+    }
+
+    .loyalty-discount-details h4 {
+      margin: 0 0 8px;
+      font-size: 1.1em;
+      color: #222;
+    }
+
+    .loyalty-discount-details p {
+      margin: 4px 0;
+      font-size: 0.95em;
+      color: #444;
+    }
+
+    .loyalty-purchase-btn {
+      margin-top: 10px;
+      background-color: #4caf50;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      width: 100%;
+    }
+
+    .loyalty-purchase-btn[disabled] {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    @media (max-width: 768px) {
+      .loyalty-discount-card {
+        min-width: 200px;
+      }
+    }
+  </style>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Loyalty Discounted",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

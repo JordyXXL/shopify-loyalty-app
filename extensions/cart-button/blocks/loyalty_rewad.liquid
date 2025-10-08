@@ -1,0 +1,733 @@
+{% if template == 'page.loyalty' %}
+  <script>
+
+  document.addEventListener('DOMContentLoaded', async function () {
+    const API_DOMAIN = 'https://plugin.loyaltyengage.tech';
+    {% comment %} const API_DOMAIN = 'https://kansas-competition-release-publicly.trycloudflare.com'; {% endcomment %}
+    const shop = Shopify.shop;
+    const User_email = {{ customer.email | json }};
+    document.querySelector(".main-page-title ").style.display = 'none';
+    const main_ret = document.querySelector(".main-ret");
+    const shopify_rte = document.querySelector(".rte");
+        const main_container = document.querySelector(".loyalty-main-cont");
+      main_ret.appendChild(shopify_rte); // move .rte into .main-ret
+      shopify_rte.appendChild(main_container);
+
+    const balanceRes = await fetch(`${API_DOMAIN}/api/reward-products/${encodeURIComponent(shop)}`);
+    const balanceData = await balanceRes.json();
+    console.log(balanceData, "this");
+
+    const product = balanceData?.product;
+    if (!product || !product.variantId || !product.price || !product.currencyCode) {
+      console.error("❌ Missing product data from reward API");
+      return;
+    }
+
+    const { variantId, price, currencyCode } = product;
+
+    // ---- Create Purchase Block ----
+          const purchaseBlock = document.createElement('div');
+          purchaseBlock.className = 'loyalty-discount-box';
+          purchaseBlock.innerHTML = `
+            <div class="loyalty-purchase-card">
+              <div class="loyalty-purchase-text">
+                <h3 class="purchase-title">{{block.settings.purchase_content_heading}}</h3>
+              <p class="purchase-subtext">{{block.settings.purchase_content}}</p>
+              </div>
+              <div class="loyalty-purchase-action">
+                <button id="purchase" class="shop-now-btn">{{ block.settings.Shop_now }}</button>
+              </div>
+            </div>
+
+                <div class="loyalty-purchase-card loyalty-checkout">
+              <div class="loyalty-checkout-text">
+                <h3 class="purchase-title">{{block.settings.Redeem_Checkout_heading}} </h3>
+                <p class="purchase-text"> {{ block.settings.Redeem_Checkout }} </p>
+              </div>
+
+            </div>
+
+          `;
+          main_container?.appendChild(purchaseBlock);
+          document.getElementById('purchase').addEventListener('click', function () {
+
+
+           const numericVariantId = variantId.split('/').pop(); // get numeric ID
+
+          const cartData = {
+            id: numericVariantId, // required for /cart/add.js
+            quantity: 1,
+
+          };
+
+            fetch('/cart/add.js', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+              },
+              body: JSON.stringify(cartData),
+            })
+              .then(res => res.json())
+              .then(result => {
+                console.log('✅ Item added to cart with properties:', result);
+          window.location.href = '/checkout';
+              })
+              .catch(err => {
+                console.error('❌ Cart add failed:', err);
+              });
+          });
+
+    // ---- Create Modal ----
+    const modalBlock = document.createElement('div');
+        modalBlock.id = "discountModal";
+    modalBlock.className = "modal-style";
+        modalBlock.style = "display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;";
+        modalBlock.innerHTML = `
+          <div class="new_clas" style="background:#fff; padding:20px; border-radius:12px; max-width:400px; width:100%; text-align:center;">
+        <h3>🎉 Discount Code Generated</h3>
+        <p>Your code: <strong id="discountCode"></strong></p>
+        <button style="width: auto;" class="shop-now-btn"  id="copyButton">Copy</button>
+          <button style="width: auto;" class="shop-now-btn" id="okButton">OK</button>
+        </div>
+      `;
+    main_container?.appendChild(modalBlock);
+
+    // ---- Rewards List Block ----
+    const rewardList = document.createElement('div');
+    rewardList.id = "loyalty-results";
+    rewardList.className = "loyalty-reward-list";
+    rewardList.innerHTML = "<p>Loading rewards...</p>";
+    main_container?.appendChild(rewardList);
+
+    // ---- Fetch & Render Rewards ----
+    async function renderLoyaltyRewards(shop, User_email) {
+      try {
+        const res = await fetch(`${API_DOMAIN}/api/products/${shop}`);
+        const data = await res.json();
+
+        const rewards = (data.matchedProducts || []).filter(
+          reward => reward.loyalty?.product_type === "discount_code"
+        );
+
+        if (!rewards.length) {
+          rewardList.innerHTML = '<p>No loyalty rewards with discount codes available.</p>';
+          return;
+        }
+
+        rewardList.innerHTML = '';
+
+        rewards.forEach((reward, i) => {
+          const title = reward.shopify?.title || 'Reward';
+          const coins = reward.loyalty.coinPrice || 0;
+          const discountPercentage = reward.loyalty.percentage || 0;
+          const sku = reward.shopify.sku ;
+
+          const card = document.createElement('div');
+          card.className = 'loyalty-reward-card';
+          card.innerHTML = `
+
+            <div class="loyalty-reward-header">
+              <h4 class="reward-title points-text">${title}</h4>
+              <div class="reward-info">
+                <span class="points-text"><strong>${coins}</strong> Coins Required</span>
+                <span class="discount-text points-text"><strong>${discountPercentage}%</strong> OFF </span>
+              </div>
+              <button class="loyalty-redeem-btn" data-sku="${sku}" data-coins="${coins}">Redeem Now</button>
+            </div>
+          `;
+
+          rewardList.appendChild(card);
+        });
+
+        document.querySelectorAll('.loyalty-redeem-btn').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const sku = button.dataset.sku;
+            const coins = button.dataset.coins;
+
+            button.innerText = 'Processing...';
+            button.disabled = true;
+
+            try {
+              const response = await fetch(`${API_DOMAIN}/api/discount/${sku}/${User_email}/${shop}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+              });
+
+              const result = await response.json();
+
+              if (result.success && result.discountCode) {
+                const modal = document.getElementById("discountModal");
+                const codeSpan = document.getElementById("discountCode");
+                const copyBtn = document.getElementById("copyButton");
+                const okBtn = document.getElementById("okButton");
+
+                codeSpan.textContent = result.discountCode;
+                modal.style.display = "flex";
+
+                copyBtn.onclick = () => {
+                  navigator.clipboard.writeText(result.discountCode).then(() => {
+                    copyBtn.textContent = "Copied!";
+                    setTimeout(() => (copyBtn.textContent = "Copy"), 2000);
+                  });
+                };
+
+                okBtn.onclick = () => {
+                  modal.style.display = "none";
+                  location.reload();
+                };
+              } else {
+              const modal = document.getElementById("discountModal");
+              const codeSpan = document.getElementById("discountCode");
+              const copyBtn = document.getElementById("copyButton");
+              const okBtn = document.getElementById("okButton");
+
+              document.querySelector("#discountModal h3").textContent = "Redem discount Code";
+              codeSpan.textContent = result.message || "Unknown error";
+              copyBtn.style.display = "none";
+              modal.style.display = "flex";
+
+              okBtn.onclick = () => {
+                modal.style.display = "none";
+                location.reload();
+              };
+              }
+            } catch (err) {
+              console.error('Redemption error:', err);
+              alert('Something went wrong during redemption.');
+            } finally {
+              button.innerText = 'Redeem';
+              button.disabled = false;
+            }
+          });
+        });
+
+      } catch (err) {
+        console.error('Failed to load loyalty products', err);
+        rewardList.innerHTML = '<p>Error loading rewards.</p>';
+      }
+    }
+
+    if (User_email) {
+      renderLoyaltyRewards(shop, User_email);
+    } else {
+      rewardList.innerHTML = '<p>{{ block.settings.reward_user_login_message }}</p>';
+    }
+  });
+
+
+   document.addEventListener('DOMContentLoaded', function () {
+
+    {% comment %} const API_DOMAIN = 'https://singing-toxic-belt-examine.trycloudflare.com'; {% endcomment %}
+
+    const API_DOMAIN = 'https://plugin.loyaltyengage.tech';
+
+    const shop = Shopify.shop;
+    const User_email = {{ customer.email | json }};
+    const User_name = {{ customer.first_name | json }} || '';
+
+    // 1. Create Modal
+    const loyaltyModal = document.createElement('div');
+    loyaltyModal.id = 'loyaltyModal';
+    loyaltyModal.style = `
+      display:none;
+      position:fixed;
+      top:0; left:0;
+      width:100%; height:100%;
+      background:rgba(0,0,0,0.6);
+      z-index:9999;
+      justify-content:center;
+      align-items:center;
+    `;
+    loyaltyModal.innerHTML = `
+      <div style="background:#fff; padding:20px; border-radius:10px; max-width:500px; width:90%; position:relative; box-shadow:0 4px 10px rgba(0,0,0,0.2);">
+        <span id="closeLoyaltyModal" style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:24px;">&times;</span>
+        <h3><strong>Loyalty Points</strong></h3>
+        <p>${User_email ? `Welcome, ${User_name}!` : `{{ block.settings.Point_model_user_Login_message }}`}</p>
+        <div id="loyaltyData" style="margin-top:15px;">${User_email ? 'Loading...' : ''}</div>
+      </div>
+    `;
+    document.body.appendChild(loyaltyModal);
+
+    // 2. Handle button click
+    document.querySelector('.view_point')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      loyaltyModal.style.display = 'flex';
+
+      if (!User_email) {
+        document.getElementById('loyaltyData').innerHTML = `<p></p>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_DOMAIN}/api/loyalty-products/${User_email}/${shop}`);
+        const data = await res.json();
+
+        if (data.success && data.user_data) {
+          const user = data.user_data;
+          document.getElementById('loyaltyData').innerHTML = `
+            <table border="1" cellpadding="8" cellspacing="0" style="width:100%; border-collapse: collapse;">
+              <thead>
+                <tr><th>Label</th><th>Value</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><strong>Current Points</strong></td><td>${user.currentPoints}</td></tr>
+                <tr><td><strong>Reserved Coins</strong></td><td>${user.reservedCoins}</td></tr>
+                <tr><td><strong>Available Coins</strong></td><td>${user.availableCoins}</td></tr>
+                <tr><td><strong>Current Tier</strong></td><td>${user.currentTier}</td></tr>
+                <tr><td><strong>Next Tier</strong></td><td>${user.nextTier || '—'}</td></tr>
+                <tr><td><strong>Points to Next Tier</strong></td><td>${user.pointsRemainingToNextTier}</td></tr>
+              </tbody>
+            </table>
+          `;
+        } else {
+          document.getElementById('loyaltyData').innerHTML = `<p>${data.message || 'Unable to fetch loyalty points.'}</p>`;
+        }
+      } catch (error) {
+        console.error('Error fetching loyalty points:', error);
+        document.getElementById('loyaltyData').innerHTML = `<p>{{ block.settings.loyalty_phycecl_product }}</p>`;
+      }
+    });
+
+    // 3. Handle modal close
+    document.getElementById('closeLoyaltyModal').addEventListener('click', () => {
+      loyaltyModal.style.display = 'none';
+    });
+  });
+  </script>
+  <div class="loyalty-main-cont">
+    <h3 class="h3">{{ block.settings.top_hadding }}</h3>
+    <div class="loyalty-wellcom">
+      <h4 class="h4-had">{{ block.settings.Welcome }}</h4>
+      <p>{{ block.settings.loyalty_rewad_paragrahp }}</p>
+      <h2 class="h2-had">{{ block.settings.Points }}</h2>
+      <span class="span"> {{ block.settings.Pending }}</span>
+      <div class="activ">
+        <a href="#" class="view_point">{{ block.settings.reward_point_show_link }}</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-ret"></div>
+  <div id="loyalty-results" class="loyalty-reward-list"></div>
+  <style>
+    .mode-style{
+    background: blue
+    }
+                .main-ret,
+            .container,
+            .page-width--narrow {
+              padding: 20px;
+              margin: 0 auto;
+              max-width: 100%;
+              box-sizing: border-box;
+            }
+
+            .template-page.custom-loyalty-page .page-width--narrow {
+              max-width: 100% !important;
+              padding: 0 !important;
+            }
+
+            /* ---------- Welcome Section ---------- */
+            .loyalty-main-cont {
+              max-width: 1200px;
+              margin: 0 auto;
+            }
+
+            .loyalty-wellcom {
+              border-radius: 16px;
+              padding: 24px 32px;
+              background-color: {{ block.settings.reward_card_color }};
+               border: {{block.settings.card_border_thinkness}}px solid {{block.settings.reward_card_border_color}};
+              color: {{ block.settings.reward_card_text }};
+              width: 100%;
+              box-sizing: border-box;
+              margin-bottom: 24px;
+            }
+
+            .h3-had, .h2-had, .h4-had,
+            .purchase-title, .purchase-text,
+            .loyalty-checkout-text,
+            .view_point, .points-text {
+              color: {{ block.settings.reward_card_text }};
+              margin: 0;
+            }
+
+            /* ---------- Purchase Blocks ---------- */
+            .loyalty-discount-box {
+              {% comment %} padding: 1rem; {% endcomment %}
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              flex-direction: column;
+            }
+
+            /* Card container */
+            .loyalty-purchase-card {
+              display: flex;
+              justify-content: space-between;
+              width: 100%;
+              background-color: {{ block.settings.reward_card_color }};
+              border: {{block.settings.card_border_thinkness}}px solid {{block.settings.reward_card_border_color}};
+              color: {{ block.settings.reward_card_text }};
+              border-radius: 16px;
+              padding: 24px 32px;
+              margin: 10px 0;
+              box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+              gap: 16px;
+              box-sizing: border-box;
+            }
+
+
+
+            /* Title and subtext */
+            .loyalty-purchase-text .purchase-title {
+              font-size: 18px;
+              font-weight: bold;
+            }
+
+            .loyalty-purchase-text .purchase-subtext {
+              font-size: 14px;
+              margin-top: 4px;
+            }
+
+            /* Button */
+            .shop-now-btn,
+            .loyalty-redeem-btn {
+              border: none;
+              background-color: {{ block.settings.button_color }};
+              color: {{ block.settings.text_color }};
+              padding: 10px 20px;
+              border-radius: 12px;
+              font-weight: 600;
+              cursor: pointer;
+              width: 100%;
+              max-width: 300px;
+              transition: all 0.2s ease;
+            }
+
+            /* ---------- Rewards Grid ---------- */
+            .loyalty-reward-list {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+              gap: 16px;
+              margin-top: 24px;
+            }
+
+            /* Reward Card */
+            .loyalty-reward-card {
+              background-color: {{ block.settings.reward_card_color }};
+              border-radius: 12px;
+               border: {{block.settings.card_border_thinkness}}px solid {{block.settings.reward_card_border_color}};
+              padding: 16px;
+              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+              text-align: center;
+              transition: transform 0.2s ease-in-out;
+            }
+
+            .loyalty-reward-card:hover {
+              transform: translateY(-3px);
+            }
+
+            .loyalty-reward-header {
+              margin-bottom: 12px;
+            }
+
+            .reward-title {
+              font-size: 18px;
+              font-weight: 600;
+              text-align: start;
+              margin-bottom: 8px;
+            }
+
+            .reward-info {
+              display: flex;
+              justify-content: start;
+              flex-wrap: wrap;
+              gap: 12px;
+              margin-bottom:15px;
+              font-size: 14px;
+            }
+
+            .discount-text,
+            .points-text {
+              font-size: 14px;
+            }
+
+            /* ---------- Modal ---------- */
+            #discountModal, #loyaltyModal {
+              display: none;
+              position: fixed;
+              top: 0; left: 0;
+              width: 100%; height: 100%;
+              background: rgba(0, 0, 0, 0.5);
+              z-index: 9999;
+              justify-content: center;
+              align-items: center;
+              padding: 16px;
+              box-sizing: border-box;
+            }
+
+            #discountModal > div,
+            #loyaltyModal > div {
+              background: #fff;
+              padding: 20px;
+              border-radius: 12px;
+              max-width: 400px;
+              width: 100%;
+              text-align: center;
+              box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            }
+
+            /* ---------- Tables ---------- */
+            #loyaltyData table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 16px;
+            }
+
+            #loyaltyData th,
+            #loyaltyData td {
+              border: 1px solid #ccc;
+              padding: 8px;
+              text-align: left;
+            }
+
+            /* ---------- Other ---------- */
+            .activ {
+              margin: 10px 0;
+              text-align: end;
+            }
+
+            .btn-continer {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 12px;
+            }
+
+
+            .cart-but {
+              padding: 10px 20px;
+              margin: 10px;
+              background: {{ block.settings.button_color }};
+              color: {{ block.settings.text_color }};
+              border-radius: {{ block.settings.border_radius }}px;
+              border: none;
+              font-size: 16px;
+              width: 100%;
+              max-width: 200px;
+            }
+            @media (max-width: 768px) {
+  .loyalty-main-cont {
+    padding: 0 16px;
+  }
+
+  .loyalty-wellcom {
+    padding: 16px;
+    font-size: 14px;
+  }
+
+  .loyalty-purchase-card {
+    padding: 16px;
+    flex-direction: column !important;
+    gap: 12px;
+  }
+
+  .shop-now-btn,
+  .loyalty-redeem-btn {
+    width: 100%;
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  .reward-title {
+    font-size: 16px;
+  }
+
+  .reward-info {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #discountModal > div,
+  #loyaltyModal > div {
+    padding: 16px;
+    width: 100%;
+    max-width: 90%;
+  }
+
+  #loyaltyData table {
+    display: block;
+    overflow-x: auto;
+    width: 100%;
+  }
+
+  #loyaltyData th,
+  #loyaltyData td {
+    font-size: 13px;
+    padding: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .reward-title {
+    font-size: 15px;
+  }
+
+  .purchase-title {
+    font-size: 16px;
+  }
+
+  .purchase-subtext {
+    font-size: 13px;
+  }
+
+  .btn-continer {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cart-but {
+    width: 100%;
+  }
+}
+
+  </style>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Loyalty Rewards Page",
+  "target": "section",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Rewards Page Texts"
+    },
+    {
+      "type": "color",
+      "id": "reward_card_color",
+      "label": "Reward Card Background",
+      "default": "#f7f7f7"
+    },
+    {
+      "type": "color",
+      "id": "reward_card_text",
+      "label": "Reward Card Text",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "reward_card_border_color",
+      "label": "Reward Card Border",
+      "default": "#000000"
+    },
+    {
+      "type": "range",
+      "id": "card_border_thinkness",
+      "label": "Card Border Thickness",
+      "min": 1,
+      "max": 10,
+      "step": 1,
+      "default": 1
+    },
+    {
+      "type": "color",
+      "id": "button_color",
+      "label": "Button Background Color",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Button Text Color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "text",
+      "id": "top_hadding",
+      "label": "Page Top Heading",
+      "default": "Loin Rewards"
+    },
+    {
+      "type": "text",
+      "id": "Welcome",
+      "label": "Welcome Heading",
+      "default": "Welcome!"
+    },
+    {
+      "type": "text",
+      "id": "loyalty_rewad_paragrahp",
+      "label": "Intro Paragraph",
+      "default": "Explore the loyalty program and earn points for shopping and more, or spend your points for rewards."
+    },
+    {
+      "type": "text",
+      "id": "Points",
+      "label": "Current Points",
+      "default": "20020 Points"
+    },
+    {
+      "type": "text",
+      "id": "Pending",
+      "label": "Pending Points Text",
+      "default": "(0 Pending)"
+    },
+    {
+      "type": "text",
+      "id": "reward_point_show_link",
+      "label": "Show Points Link",
+      "default": "View Your Active Points"
+    },
+    {
+      "type": "text",
+      "id": "purchase_content_heading",
+      "label": "Purchase Heading",
+      "default": "Make a purchase"
+    },
+   {
+      "type": "text",
+      "id": "purchase_content",
+      "label": "Purchase Message",
+      "default": "20 point per US$ 20"
+    },
+    {
+      "type": "text",
+      "id": "Shop_now",
+      "label": "Shop Now Button",
+      "default": "Shop now"
+    },
+    {
+      "type": "text",
+      "id": "Redeem_Checkout_heading",
+      "label": "Redeem Heading",
+      "default": "Redeem And Checkout"
+    },
+    {
+      "type": "text",
+      "id": "Redeem_Checkout",
+      "label": "Redeem Message",
+      "default": "And Get Discount Code"
+    },
+    {
+      "type": "text",
+      "id": "loyalty_phycecl_product",
+      "label": "Subscription Required Message",
+      "default": "Please subscribe to the loyalty program first."
+    },
+     {
+      "type": "text",
+      "id": "Point_model_user_Login_message",
+      "label": "Login Message",
+      "default": "Please log in to see your loyalty points."
+    },
+     {
+      "type": "text",
+      "id": "reward_user_login_message",
+      "label": "Login Required Message",
+      "default": "Please log in to view loyalty rewards."
+    },
+  ]
+}
+{% endschema %}

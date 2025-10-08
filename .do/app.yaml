@@ -1,0 +1,120 @@
+name: shopify-loyalty-app
+region: nyc
+services:
+- name: web
+  source_dir: /
+  github:
+    repo: your-username/shopify-loyalty-app
+    branch: main
+    deploy_on_push: true
+  dockerfile_path: Dockerfile.production
+  http_port: 3000
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  health_check:
+    http_path: /health
+    initial_delay_seconds: 60
+    period_seconds: 10
+    timeout_seconds: 5
+    success_threshold: 1
+    failure_threshold: 3
+  env:
+  - key: NODE_ENV
+    value: production
+  - key: PORT
+    value: "3000"
+  - key: DATABASE_URL
+    value: ${db.DATABASE_URL}
+  - key: SHOPIFY_API_KEY
+    value: ${SHOPIFY_API_KEY}
+  - key: SHOPIFY_API_SECRET
+    value: ${SHOPIFY_API_SECRET}
+  - key: SHOPIFY_APP_URL
+    value: ${APP_URL}
+  - key: SHOPIFY_SCOPES
+    value: "read_products,write_products,read_customers,write_customers,read_orders,write_orders,read_discounts,write_discounts,read_themes,write_themes"
+  - key: CRON_SECRET
+    value: ${CRON_SECRET}
+  - key: SHOPIFY_APP_SESSION_SECRET
+    value: ${SESSION_SECRET}
+  - key: LOG_LEVEL
+    value: info
+
+databases:
+- name: db
+  engine: PG
+  version: "15"
+  size: basic-xs
+  num_nodes: 1
+
+domains:
+- domain: your-domain.com
+  type: PRIMARY
+  wildcard: false
+  zone: your-domain.com
+
+alerts:
+- rule: CPU_UTILIZATION
+  disabled: false
+  value: 80
+- rule: MEM_UTILIZATION
+  disabled: false
+  value: 80
+- rule: RESTART_COUNT
+  disabled: false
+  value: 5
+
+features:
+- buildpack-stack=ubuntu-22
+
+jobs:
+- name: db-migrate
+  source_dir: /
+  github:
+    repo: your-username/shopify-loyalty-app
+    branch: main
+  dockerfile_path: Dockerfile.production
+  kind: PRE_DEPLOY
+  run_command: npx prisma db push
+  env:
+  - key: DATABASE_URL
+    value: ${db.DATABASE_URL}
+
+- name: queue-processor
+  source_dir: /
+  github:
+    repo: your-username/shopify-loyalty-app
+    branch: main
+  dockerfile_path: Dockerfile.production
+  kind: WORKER
+  run_command: node -e "
+    const cron = require('node-cron');
+    const { exec } = require('child_process');
+    
+    console.log('Starting queue processor...');
+    
+    // Process queues every 5 minutes
+    cron.schedule('*/5 * * * *', () => {
+      console.log('Processing queues...');
+      exec('curl -H \"Authorization: Bearer ${CRON_SECRET}\" -X POST http://localhost:3000/api/cron/process-queues', (error, stdout, stderr) => {
+        if (error) {
+          console.error('Queue processing error:', error);
+          return;
+        }
+        console.log('Queue processing completed:', stdout);
+      });
+    });
+    
+    // Keep the process alive
+    process.on('SIGTERM', () => {
+      console.log('Queue processor shutting down...');
+      process.exit(0);
+    });
+    "
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  env:
+  - key: DATABASE_URL
+    value: ${db.DATABASE_URL}
+  - key: CRON_SECRET
+    value: ${CRON_SECRET}
