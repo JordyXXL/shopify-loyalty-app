@@ -18,10 +18,13 @@ import {
   InlineStack,
   Text,
   Box,
+  Checkbox,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { afterTenantChange, LOYALTY_CONNECT_INTENTS, loyaltyConnectAction, loyaltyConnectView } from "../loyalty-connect/admin.server";
+import { loyaltyConnectQueue } from "../loyalty-connect/index.server";
 
 // === LOADER ===
 export const loader = async ({ request }) => {
@@ -62,21 +65,34 @@ export const loader = async ({ request }) => {
     },
   });
 
+  const loyaltyConnect = await loyaltyConnectView(prisma, tenants.map((t) => t.id));
+
   return json({
     loyaltyConfig,
     tenants,
     queueStats,
     purchaseStats,
     shop: session.shop,
+    loyaltyConnect,
   });
 };
 
 // === ACTION ===
 export const action = async ({ request }) => {
   try {
-    const { session } = await authenticate.admin(request);
+    const { session, scopes } = await authenticate.admin(request);
     const formData = await request.formData();
     const action = formData.get("action");
+
+    if (LOYALTY_CONNECT_INTENTS.has(action)) {
+      try {
+        const result = await loyaltyConnectAction({ db: prisma, intent: action, formData, session, scopes, queue: loyaltyConnectQueue });
+        return json({ ...result, tenantId: Number(formData.get("tenantId")) }, { status: result.status === "success" ? 200 : 400 });
+      } catch (error) {
+        if (error instanceof Response) return error; // Shopify's permission screen for the pixel scopes
+        throw error;
+      }
+    }
 
     if (action === "create_tenant") {
       const tenantData = {
@@ -112,12 +128,14 @@ export const action = async ({ request }) => {
         where: { id: tenantId },
         data: updateData,
       });
+      await afterTenantChange({ db: prisma, tenantId, session, scopes });
 
       return json({ status: "success", message: "Tenant updated successfully" });
     }
 
     if (action === "delete_tenant") {
       const tenantId = parseInt(formData.get("tenantId"));
+      await afterTenantChange({ db: prisma, tenantId, session, scopes, deleting: true });
       
       await prisma.tenant.delete({
         where: { id: tenantId },
@@ -154,8 +172,36 @@ export const action = async ({ request }) => {
 
 // === COMPONENT ===
 export default function TenantsPage() {
-  const { loyaltyConfig, tenants, queueStats, purchaseStats, shop } = useLoaderData();
+  const { loyaltyConfig, tenants, queueStats, purchaseStats, shop, loyaltyConnect } = useLoaderData();
   const fetcher = useFetcher();
+  const connectFetcher = useFetcher();
+  const [connectTenant, setConnectTenant] = useState(null);
+  const [connectForm, setConnectForm] = useState({ enabled: false, publicKey: "", secretKey: "" });
+  const connectView = connectTenant ? loyaltyConnect?.byTenant?.[connectTenant.id] : null;
+
+  useEffect(() => {
+    if (connectFetcher.data?.status === "success") {
+      setConnectForm((f) => ({ ...f, secretKey: "" }));
+    }
+  }, [connectFetcher.data]);
+
+  const openConnect = (tenant) => {
+    const view = loyaltyConnect?.byTenant?.[tenant.id];
+    setConnectTenant(tenant);
+    setConnectForm({ enabled: Boolean(view?.enabled), publicKey: view?.publicKey || "", secretKey: "" });
+  };
+
+  const submitConnect = (intent) => {
+    const data = new FormData();
+    data.append("action", intent);
+    data.append("tenantId", connectTenant.id);
+    if (intent === "loyalty_connect_save") {
+      data.append("enabled", String(connectForm.enabled));
+      data.append("publicKey", connectForm.publicKey);
+      data.append("secretKey", connectForm.secretKey);
+    }
+    connectFetcher.submit(data, { method: "post" });
+  };
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -233,9 +279,11 @@ export default function TenantsPage() {
     tenant.isActive ? <Badge status="success">Active</Badge> : <Badge status="critical">Inactive</Badge>,
     `${tenant._count.profileQueue} profiles`,
     `${tenant._count.purchaseQueue} purchases`,
+    loyaltyConnect?.byTenant?.[tenant.id]?.enabled ? <Badge tone="success">On</Badge> : <Badge>Off</Badge>,
     tenant.createdAt ? new Date(tenant.createdAt).toLocaleDateString() : "N/A",
     <ButtonGroup>
       <Button size="slim" onClick={() => handleEdit(tenant)}>Edit</Button>
+      <Button size="slim" onClick={() => openConnect(tenant)}>Loyalty Connect</Button>
       <Button 
         size="slim" 
         destructive 
@@ -361,8 +409,8 @@ export default function TenantsPage() {
             <Text variant="headingMd">Configured Tenants</Text>
             {tenants.length > 0 ? (
               <DataTable
-                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
-                headings={['Name', 'Shop Domain', 'Status', 'Profile Queue', 'Purchase Queue', 'Created', 'Actions']}
+                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']}
+                headings={['Name', 'Shop Domain', 'Status', 'Profile Queue', 'Purchase Queue', 'Loyalty Connect', 'Created', 'Actions']}
                 rows={tableRows}
               />
             ) : (
@@ -508,6 +556,128 @@ export default function TenantsPage() {
               multiline={2}
             />
           </FormLayout>
+        </Modal.Section>
+      </Modal>
+
+      {/* Loyalty Connect Modal */}
+      <Modal
+        open={Boolean(connectTenant)}
+        onClose={() => setConnectTenant(null)}
+        title={`Loyalty Connect: ${connectTenant?.name ?? ""}`}
+        primaryAction={{
+          content: "Save",
+          onAction: () => submitConnect("loyalty_connect_save"),
+          loading: connectFetcher.state !== "idle",
+        }}
+        secondaryActions={[
+          {
+            content: "Test connection",
+            onAction: () => submitConnect("loyalty_connect_test"),
+            disabled: !connectView?.hasSecretKey || connectFetcher.state !== "idle",
+          },
+          {
+            content: "Close",
+            onAction: () => setConnectTenant(null),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            {connectFetcher.data?.message && connectFetcher.data?.tenantId === connectTenant?.id && (
+              <Banner tone={connectFetcher.data.status === "success" ? "success" : "critical"}>
+                <p>{connectFetcher.data.message}</p>
+              </Banner>
+            )}
+            {loyaltyConnect && !loyaltyConnect.available && (
+              <Banner tone="warning">
+                <p>The Loyalty Connect tables are missing in the database: apply the migration (npx prisma db push or npx prisma migrate deploy).</p>
+              </Banner>
+            )}
+            {loyaltyConnect && !loyaltyConnect.encryptionReady && (
+              <Banner tone="warning">
+                <p>LOYALTY_CONNECT_ENCRYPTION_KEY is not set on the server: keys cannot be stored or read.</p>
+              </Banner>
+            )}
+            {connectView && !connectView.keysReadable && (
+              <Banner tone="warning">
+                <p>The stored keys cannot be read (the encryption key changed?). Enter both keys again.</p>
+              </Banner>
+            )}
+            <Text as="p">
+              Sends this shop&apos;s orders, cancellations and refunds, and (only after the visitor&apos;s consent) its storefront and checkout
+              events to Loyalty Connect at {loyaltyConnect?.connectUrl}. Off: nothing is sent.
+            </Text>
+            <FormLayout>
+              <Checkbox
+                label="Send data to Loyalty Connect"
+                checked={connectForm.enabled}
+                onChange={(value) => setConnectForm({ ...connectForm, enabled: value })}
+              />
+              <TextField
+                label="Public key"
+                value={connectForm.publicKey}
+                onChange={(value) => setConnectForm({ ...connectForm, publicKey: value })}
+                placeholder="cs_pub_…"
+                helpText="From the shop's source in Loyalty Connect. Used by the browser pixel. Stored encrypted."
+                autoComplete="off"
+              />
+              <TextField
+                label="Secret source key"
+                value={connectForm.secretKey}
+                onChange={(value) => setConnectForm({ ...connectForm, secretKey: value })}
+                type="password"
+                placeholder={connectView?.secretKeyHint ? `Stored: ${connectView.secretKeyHint}` : "cs_sec_…"}
+                helpText="From the same source. Stored encrypted and never shown again. Leave empty to keep the stored key."
+                autoComplete="off"
+              />
+            </FormLayout>
+            <Divider />
+            <BlockStack gap="200">
+              <Text variant="headingSm" as="h3">Status</Text>
+              <Text as="p">
+                Connection test:{" "}
+                {connectView?.lastTestAt
+                  ? `${connectView.lastTestOk ? "OK" : "failed"} (${new Date(connectView.lastTestAt).toLocaleString()}): ${connectView.lastTestMessage ?? ""}`
+                  : "not tested yet"}
+              </Text>
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="span">Browser pixel:</Text>
+                {connectView?.pixelStatus === "installed" ? (
+                  <Badge tone="success">Installed</Badge>
+                ) : connectView?.pixelStatus === "needs_permission" ? (
+                  <Badge tone="attention">Needs permission</Badge>
+                ) : connectView?.pixelStatus === "error" ? (
+                  <Badge tone="critical">Error</Badge>
+                ) : connectView?.pixelStatus === "uninstalled" ? (
+                  <Badge>App uninstalled</Badge>
+                ) : (
+                  <Badge>Not installed</Badge>
+                )}
+                {connectView?.pixelStatus === "needs_permission" && (
+                  <Button size="slim" onClick={() => submitConnect("loyalty_connect_scopes")}>Grant pixel permissions</Button>
+                )}
+                {connectView?.enabled && connectView?.pixelStatus !== "needs_permission" && (
+                  <Button size="slim" onClick={() => submitConnect("loyalty_connect_pixel")}>Re-install pixel</Button>
+                )}
+              </InlineStack>
+              {connectView?.pixelError && <Text as="p" tone="critical">Pixel: {connectView.pixelError}</Text>}
+              <Text as="p">
+                Deliveries (last 7 days; failed: 30 days): {connectView?.counts?.PENDING ?? 0} waiting, {connectView?.counts?.PROCESSING ?? 0} sending,{" "}
+                {connectView?.counts?.DONE ?? 0} delivered, {connectView?.counts?.FAILED ?? 0} failed, {connectView?.counts?.SKIPPED ?? 0} skipped
+              </Text>
+              <Text as="p">
+                Last delivery:{" "}
+                {connectView?.lastDeliveryAt
+                  ? `${new Date(connectView.lastDeliveryAt).toLocaleString()}: ${connectView.lastDeliveryStatus ?? ""}`
+                  : "none yet"}
+              </Text>
+              {connectView?.lastError && (
+                <Text as="p" tone="critical">
+                  Last error{connectView.lastErrorAt ? ` (${new Date(connectView.lastErrorAt).toLocaleString()})` : ""}: {connectView.lastError}
+                </Text>
+              )}
+            </BlockStack>
+          </BlockStack>
         </Modal.Section>
       </Modal>
     </Page>

@@ -1,6 +1,9 @@
 import { authenticate } from "../shopify.server";
-import db from "../db.server";
 import prisma from "../db.server";
+import { handleLoyaltyConnectWebhook } from "../loyalty-connect/index.server";
+import { LOYALTY_CONNECT_ONLY_TOPICS } from "../loyalty-connect/webhooks.server";
+
+const db = prisma;
 
 function formatPhone(phone) {
   if (!phone) return null;
@@ -16,8 +19,8 @@ function formatPhone(phone) {
   return null; // If unrecognized format
 }
 
-export const action = async ({ request }) => {
-  const { topic, shop, admin, payload } = await authenticate.webhook(request);
+// The Loyalty Engage handling, unchanged.
+async function loyaltyEngageWebhook({ topic, shop, admin, payload }) {
 
   console.log("Webhook Triggered:", topic, "for shop:", shop);
 
@@ -267,4 +270,24 @@ export const action = async ({ request }) => {
   }
 
   return new Response();
+}
+
+export const action = async ({ request }) => {
+  const { topic, shop, admin, payload, webhookId } = await authenticate.webhook(request);
+
+  // Loyalty Connect's own topics (orders/updated, orders/cancelled, refunds/create): queued for Loyalty Connect when it is on for
+  // the shop, and always answered 200; the Loyalty Engage code never sees them.
+  if (LOYALTY_CONNECT_ONLY_TOPICS.has(topic)) {
+    await handleLoyaltyConnectWebhook({ topic, shop, webhookId, payload });
+    return new Response();
+  }
+
+  // Every other topic goes to Loyalty Engage exactly as before. Loyalty Connect works alongside: started first, awaited last, never
+  // throwing, so it neither delays nor changes the Loyalty Engage forwarding or the answer to Shopify.
+  const loyaltyConnect = handleLoyaltyConnectWebhook({ topic, shop, webhookId, payload });
+  try {
+    return await loyaltyEngageWebhook({ topic, shop, admin, payload });
+  } finally {
+    await loyaltyConnect;
+  }
 };

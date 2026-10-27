@@ -13,9 +13,17 @@ api_version = "2025-01"
   uri = "/webhooks"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
+  # Loyalty Connect (app/loyalty-connect): order versions, cancellations and refunds. orders/create is not listed here on purpose:
+  # the app already subscribes every shop to it at install (shopify.server.js), and listing it here as well would deliver it twice.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks"
+  topics = [ "orders/updated", "orders/cancelled", "refunds/create" ]
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_customers,read_orders,read_product_listings,read_publications,write_customers,write_discounts,write_orders,write_products"
+# Loyalty Connect's web pixel (webPixelCreate). Optional: asked for only when a shop switches Loyalty Connect on.
+optional_scopes = [ "write_pixels", "read_customer_events" ]
 
 [auth]
 redirect_urls = [

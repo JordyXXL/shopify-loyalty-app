@@ -189,6 +189,71 @@ Access comprehensive analytics at `/app/analytics`:
 - Rate limiting on public endpoints
 - Input validation and sanitization
 
+## 🔗 Loyalty Connect
+
+For shops that use Attribute or Perform through Loyalty Engage, this app can also send the shop's data to **Loyalty Connect**, so the
+merchant needs only this one app. It is **per tenant and off by default**: off, or without keys, nothing is sent to Loyalty Connect
+and the Loyalty Engage forwarding is exactly as before. The code is in `app/loyalty-connect/` and `extensions/loyalty-connect-pixel/`.
+
+### What is sent, and when
+
+| Shopify | to Loyalty Connect | when |
+|---|---|---|
+| `orders/create`, `orders/updated`, `orders/cancelled` | `POST /api/v1/orders`: the order in Loyalty Connect's order contract, mapped exactly as Loyalty Connect's own Shopify app maps it (`app/loyalty-connect/orders.js`): id, versions (`updatedAt`), currency, totals and subtotal, discount codes, line items, refunds, cancellation, landing page and referrer, the survey answer, country and province of the shipping address, and the customer's e-mail address (Loyalty Connect replaces it with a keyed hash at its door; this app never logs it) | about a second after the webhook, from the queue |
+| `refunds/create` | the order is read again through the Admin API and sent as a new version | idem |
+| `customers/redact` | `POST /api/v1/erase` with the e-mail address as SHA-256 (`emailSha256`) and the order ids Shopify names; the address itself is not stored | idem |
+| `customers/data_request` | nothing: this app keeps no customer data for Loyalty Connect. What Loyalty Connect holds is retrieved with Loyalty Connect's own privacy request flow: an admin of the shop's organisation makes an access request by the customer's e-mail address on the privacy page in Loyalty Connect, which returns one document with what Loyalty Connect and every connected product hold | — |
+| `shop/redact` | nothing; the shop's Loyalty Connect settings and queued messages are deleted here | — |
+| storefront and checkout events | the web pixel posts page views, product and cart events, checkout steps and `purchase` (with the order id, so event and order link) to `/collect?k=<public key>` | in the visitor's browser, only after consent |
+
+Never sent: names, street, postcode, city, phone numbers, IP address, user agent, order notes. Orders and refunds are only sent while the
+tenant has Loyalty Connect on and is active; an erasure is also sent for a tenant that was switched off after it had sent data.
+
+**Delivery.** The webhook only stores the work in the `LoyaltyConnectQueue` table (encrypted; emptied once delivered), so Shopify and
+the Loyalty Engage forwarding never wait for Loyalty Connect. Orders go in batches (at most 100, under 1.5 MB). Per order Loyalty Connect
+answers `accepted`, `duplicate`, `not_forwarded` (done) or `refused` (failed, with the reason). Network errors, `401`/`403`, `408`,
+`429` (after `Retry-After`) and `5xx` are retried after 1, 2, 4 … minutes, at most 6 hours apart, 15 times (about two days). The cron
+call to `/api/cron/process-queues` also delivers what is due, after the Loyalty Engage queues and without changing their result.
+
+**Consent.** The web pixel is the same as the one of Loyalty Connect's own Shopify app: Shopify loads it only for visitors who granted
+**analytics and marketing** through Shopify's Customer Privacy API (the shop's cookie banner), so it never runs without that consent,
+and it sends both Consent Mode types as granted. It reads no contact or address data of the checkout. Orders carry no browser data.
+
+### Switching it on (per tenant)
+
+1. In Loyalty Connect, the shop's source: copy the **public key** (`cs_pub_…`) and the **secret source key** (`cs_sec_…`). Make sure the
+   source's allowed origins include the shop's domains (the pixel posts from the storefront and checkout).
+2. In this app: **Tenants › Loyalty Connect** for the tenant: tick *Send data to Loyalty Connect*, paste both keys, **Save**.
+   Saving installs the web pixel. The first time Shopify asks the merchant to grant the pixel permissions (*Grant pixel permissions*).
+3. **Test connection** sends a made-up test order to `/api/v1/orders/validate` (Loyalty Connect stores and forwards nothing) and says
+   whether the key works and whether a product is connected to the source.
+4. The block shows the pixel status, the last delivery and the counts of waiting, delivered, failed and skipped messages.
+
+Switching off removes the pixel and skips what still waits. Only one tenant per shop can have it on.
+
+### What the owner must deploy
+
+- **Environment variables** (new):
+  - `LOYALTY_CONNECT_ENCRYPTION_KEY` (required to store keys): 32 random bytes as base64 or 64 hex characters, e.g.
+    `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. Keys and queued messages are encrypted with
+    AES-256-GCM under it; if it changes, the keys must be entered again.
+  - `LOYALTY_CONNECT_URL` (optional): Loyalty Connect's origin, default `https://connect.valtracs.com`. A future domain change is only this
+    setting (the API calls and the pixel's collector URL; press *Re-install pixel* per tenant after a change).
+- **Database**: the models `LoyaltyConnectSettings` and `LoyaltyConnectQueue` (migration `prisma/migrations/20261027120000_loyalty_connect`;
+  `npx prisma db push`, as `deploy.sh` does, creates them too).
+- **Shopify app configuration** (`shopify app deploy` with `shopify.app.loyalty-engage.toml`): the webhook topics `orders/updated`,
+  `orders/cancelled` and `refunds/create` (orders/create and the compliance topics are already subscribed), the optional scopes
+  `write_pixels` and `read_customer_events`, and the extension `extensions/loyalty-connect-pixel`. The CLI writes a `uid` into the
+  extension's toml on the first deploy: commit it. Orders and e-mail addresses on orders need the protected customer data access the app
+  already uses for `orders/create`.
+- Nothing else: the existing cron job delivers the queue.
+
+### Tests
+
+`npm test` (vitest) covers the order mapping against Loyalty Connect's own golden fixtures, refunds and cancellation, "off means no call",
+per-item answers, retries on 5xx/429, erasure and shop redaction, the pixel payload, and that the Loyalty Engage webhook handling makes the
+same calls with Loyalty Connect off or on.
+
 ## 🚀 Deployment
 
 ### Production Setup

@@ -10,4 +10,8 @@ module.exports = {
   globals: {
     shopify: "readonly"
   },
+  // The tests run on vitest (jest-compatible API); eslint-plugin-jest from the Remix preset needs a version to load its rules.
+  settings: {
+    jest: { version: 29 },
+  },
 };

@@ -1,9 +1,10 @@
 import { json } from "@remix-run/node";
 import prisma from "../db.server";
 import { processProfileQueue } from "../queues/profile-queue.server";
+import { runLoyaltyConnectQueueInBackground } from "../loyalty-connect/index.server";
 
 // This endpoint will be called by a cron service to process queues
-export const action = async ({ request }) => {
+async function processLoyaltyEngageQueues({ request }) {
   const startTime = Date.now();
   
   // Verify this is a legitimate cron request (you can add authentication here)
@@ -49,6 +50,14 @@ export const action = async ({ request }) => {
       { status: 500 }
     );
   }
+}
+
+export const action = async (args) => {
+  const response = await processLoyaltyEngageQueues(args);
+  // Loyalty Connect's queue runs after the Loyalty Engage queues, in the background: it never delays or changes their result.
+  // Not for a request the Loyalty Engage part refused as unauthorized (its only 401).
+  if (response.status !== 401) runLoyaltyConnectQueueInBackground();
+  return response;
 };
 
 // Process purchase queue (similar to WordPress plugin)

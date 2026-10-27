@@ -61,6 +61,8 @@ model Tenant {
   profileQueue        ProfileQueue[]
   purchaseQueue       PurchaseQueue[]
   loyaltyPages        LoyaltyPage[]
+  loyaltyConnect      LoyaltyConnectSettings?
+  loyaltyConnectQueue LoyaltyConnectQueue[]
   
   @@index([shopDomain])
 }
@@ -166,4 +168,72 @@ model ApiLog {
   
   @@index([shop, createdAt])
   @@index([endpoint, createdAt])
+}
+
+// Loyalty Connect: per tenant, whether this app also sends the shop's orders, refunds, erasures and (through the web pixel)
+// browser events to Loyalty Connect. Both keys are encrypted at rest (app/loyalty-connect/crypto.server.js).
+model LoyaltyConnectSettings {
+  id                 Int       @id @default(autoincrement())
+  tenantId           Int       @unique
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shopDomain         String
+  enabled            Boolean   @default(false)
+  publicKeyEnc       String?   @db.Text // cs_pub_..., encrypted
+  secretKeyEnc       String?   @db.Text // cs_sec_..., encrypted
+  secretKeyHint      String? // "cs_sec_...abcd", to recognise the key in the admin screen
+  storefrontDomain   String? // the shop's primary domain: Shopify's landing_site paths are made absolute on it
+  pixelStatus        String? // installed | removed | needs_permission | error | uninstalled
+  pixelError         String?   @db.Text
+  pixelUpdatedAt     DateTime?
+  lastTestAt         DateTime?
+  lastTestOk         Boolean?
+  lastTestMessage    String?   @db.Text
+  lastDeliveryAt     DateTime?
+  lastDeliveryStatus String?   @db.Text
+  lastErrorAt        DateTime?
+  lastError          String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([shopDomain])
+}
+
+// Loyalty Connect's delivery queue (app/loyalty-connect/queue.server.js). The payload is encrypted and emptied once an item is
+// done, failed or skipped.
+model LoyaltyConnectQueue {
+  id             Int                       @id @default(autoincrement())
+  tenantId       Int
+  tenant         Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind           LoyaltyConnectQueueKind
+  dedupeKey      String                    @db.VarChar(191)
+  payload        String                    @db.LongText
+  status         LoyaltyConnectQueueStatus @default(PENDING)
+  attempts       Int                       @default(0)
+  nextAttemptAt  DateTime                  @default(now())
+  lockedAt       DateTime?
+  claimToken     String?                   @db.VarChar(64)
+  result         String?
+  lastHttpStatus Int?
+  lastError      String?                   @db.Text
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@unique([tenantId, dedupeKey])
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, status])
+  @@index([claimToken])
+}
+
+enum LoyaltyConnectQueueKind {
+  ORDER
+  REFUND
+  ERASE
+}
+
+enum LoyaltyConnectQueueStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+  SKIPPED
 }
