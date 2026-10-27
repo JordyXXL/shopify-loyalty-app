@@ -1,6 +1,6 @@
 import { json } from "@remix-run/node";
-import prisma from "../../db.server";
-import { processProfileQueue } from "./api.shopify.v1.update-profile";
+import prisma from "../db.server";
+import { processProfileQueue } from "../queues/profile-queue.server";
 
 // This endpoint will be called by a cron service to process queues
 export const action = async ({ request }) => {

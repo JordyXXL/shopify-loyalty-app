@@ -1,6 +1,6 @@
 import { json } from "@remix-run/node";
-import prisma from "../../db.server";
-import { apiVersion } from "../../shopify.server";
+import prisma from "../db.server";
+import { apiVersion } from "../shopify.server";
 
 // Helper function to get tenant configuration
 async function getTenantConfig(tenantName) {

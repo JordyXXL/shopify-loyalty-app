@@ -1,5 +1,5 @@
 import { json } from "@remix-run/node";
-import prisma from "../../db.server";
+import prisma from "../db.server";
 
 // Helper function to get tenant configuration
 async function getTenantConfig(tenantName) {

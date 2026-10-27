@@ -19,7 +19,6 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { apiVersion } from "../shopify.server";
 
 // === LOADER ===
 export const loader = async ({ request }) => {
